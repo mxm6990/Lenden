@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", system-ui, sans-serif;
+  --font-logo: "Outfit", "DM Sans", system-ui, sans-serif;
+
+  --color-lenden-black: #080a09;
+  --color-lenden-dark: #0f1412;
+  --color-lenden-green: #1a5c38;
+  --color-lenden-green-dark: #0f3d24;
+  --color-lenden-green-light: #2d7a4a;
+  --color-lenden-mint: #4ade80;
+  --color-lenden-mint-dim: #22c55e;
+  --color-lenden-surface: #141a17;
+  --color-lenden-card: #1a221e;
+  --color-lenden-border: #2a3530;
+  --color-lenden-muted: #8a9a92;
+  --color-lenden-white: #f8faf9;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply m-0 bg-lenden-black text-lenden-white font-sans antialiased;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+
+  #root {
+    @apply min-h-svh w-full overflow-x-clip;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-white via-lenden-white to-lenden-mint bg-clip-text text-transparent;
+  }
+
+  .glow-green {
+    box-shadow: 0 0 80px rgba(74, 222, 128, 0.12);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .safe-bottom-lg {
+    padding-bottom: calc(2.5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .nav-safe-bottom {
+    padding-bottom: calc(1.75rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .main-scroll-padding {
+    padding-bottom: calc(6rem + env(safe-area-inset-bottom, 0px));
+  }
+}
