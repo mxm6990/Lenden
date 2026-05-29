@@ -154,7 +154,12 @@ export function AllocationDetailScreen() {
                     <p className="mt-0.5 text-[11px] text-lenden-muted">{entry.note}</p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-sm font-semibold text-lenden-mint">+{formatBDT(entry.amount)}</p>
+                    <p
+                      className={`text-sm font-semibold ${(entry.amount >= 0 ? 'text-lenden-mint' : 'text-red-400')}`}
+                    >
+                      {entry.amount >= 0 ? '+' : ''}
+                      {formatBDT(entry.amount)}
+                    </p>
                     <p className="text-[10px] text-lenden-muted">{entry.date}</p>
                   </div>
                 </div>

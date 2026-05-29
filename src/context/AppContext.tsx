@@ -37,6 +37,7 @@ interface AppState {
   profileRoute: ProfileRoute | null
   selectedStockId: string | null
   buyStep: BuyStep
+  sellStep: BuyStep
   buyAmount: number
   watchlist: string[]
   user: UserProfile
@@ -60,7 +61,9 @@ interface AppContextValue extends AppState {
   closeProfileRoute: () => void
   closeOverlay: () => void
   startBuy: (stockId?: string) => void
+  startSell: (stockId?: string) => void
   setBuyStep: (step: BuyStep) => void
+  setSellStep: (step: BuyStep) => void
   setBuyAmount: (amount: number) => void
   toggleWatchlist: (stockId: string) => void
   refreshPortfolio: () => void
@@ -101,6 +104,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [profileRoute, setProfileRoute] = useState<ProfileRoute | null>(null)
   const [selectedStockId, setSelectedStockId] = useState<string | null>(null)
   const [buyStep, setBuyStep] = useState<BuyStep>('amount')
+  const [sellStep, setSellStep] = useState<BuyStep>('amount')
   const [buyAmount, setBuyAmount] = useState(500)
   const [watchlist, setWatchlist] = useState(['gp', 'renata', 'marico'])
   const [user, setUser] = useState<UserProfile>(defaultUser)
@@ -166,6 +170,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setProfileRoute(null)
     setSelectedStockId(null)
     setBuyStep('amount')
+    setSellStep('amount')
     setBuyAmount(500)
     setWatchlist(['gp', 'renata', 'marico'])
     setUser(defaultUser)
@@ -227,6 +232,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         profileRoute,
         selectedStockId,
         buyStep,
+        sellStep,
         buyAmount,
         watchlist,
         user,
@@ -294,13 +300,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         closeOverlay: () => {
           setOverlay(null)
           setBuyStep('amount')
+          setSellStep('amount')
         },
         startBuy: (stockId) => {
           if (stockId) setSelectedStockId(stockId)
           setBuyStep('amount')
           setOverlay('buy-flow')
         },
+        startSell: (stockId) => {
+          if (stockId) setSelectedStockId(stockId)
+          setSellStep('amount')
+          setOverlay('sell-flow')
+        },
         setBuyStep,
+        setSellStep,
         setBuyAmount,
         toggleWatchlist: (stockId) => {
           if (watchlistPersistInFlight.current.has(stockId)) return

@@ -6,6 +6,7 @@ import { getPortfolioBundle, type PortfolioBundle } from '../services/portfolioA
 import type { PortfolioHistoryPoint } from '../data/portfolio'
 import type { AllocationSegment } from '../data/allocation'
 import { Card, ChangeText } from '../components/ui/Card'
+import { Button } from '../components/ui/Button'
 import { ScreenHeader } from '../components/layout/ScreenHeader'
 import { PortfolioChart } from '../components/charts/PortfolioChart'
 import { PrototypeBanner, PrototypeModeBadge } from '../components/trust/ComplianceCopy'
@@ -13,7 +14,8 @@ import { LoadingSkeleton, TrustState } from '../components/trust/TrustState'
 import { useApp } from '../context/AppContext'
 
 export function PortfolioScreen() {
-  const { openStock, openAllocation, isDemo, portfolioVersion, dataRefreshing } = useApp()
+  const { openStock, openAllocation, startBuy, startSell, isDemo, portfolioVersion, dataRefreshing } =
+    useApp()
   const [scrubbedPoint, setScrubbedPoint] = useState<PortfolioHistoryPoint | null>(null)
   const [initialLoad, setInitialLoad] = useState(true)
   const [summary, setSummary] = useState<PortfolioBundle['summary'] | null>(null)
@@ -132,30 +134,57 @@ export function PortfolioScreen() {
             ) : (
               <div className="space-y-2">
                 {holdings.map((h, i) => (
-                  <motion.button
+                  <motion.div
                     key={h.stockId}
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.05 }}
-                    onClick={() => openStock(h.stockId)}
-                    className="flex w-full items-center justify-between rounded-2xl border border-white/5 bg-lenden-card p-4 text-left"
+                    className="rounded-2xl border border-white/5 bg-lenden-card p-4"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-lenden-green text-[10px] font-bold text-white">
-                        {h.stock.ticker.slice(0, 2)}
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-lenden-green text-[10px] font-bold text-white">
+                          {h.stock.ticker.slice(0, 2)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-white">{h.stock.ticker}</p>
+                          <p className="text-[11px] text-lenden-muted">
+                            {h.shares} shares · avg {formatBDT(h.avgCost)}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-sm font-bold text-white">{h.stock.ticker}</p>
-                        <p className="text-[11px] text-lenden-muted">
-                          {h.shares} shares · avg {formatBDT(h.avgCost)}
-                        </p>
+                      <div className="shrink-0 text-right">
+                        <p className="text-sm font-bold text-white">{formatBDT(h.currentValue)}</p>
+                        <ChangeText value={h.returnAmount} pct={h.returnPct} />
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-white">{formatBDT(h.currentValue)}</p>
-                      <ChangeText value={h.returnAmount} pct={h.returnPct} />
+                    <div className="mt-3 grid grid-cols-3 gap-2 border-t border-white/5 pt-3">
+                      <Button
+                        size="sm"
+                        className="w-full"
+                        onClick={() => startBuy(h.stockId)}
+                      >
+                        Buy
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full"
+                        disabled={h.shares <= 0}
+                        onClick={() => startSell(h.stockId)}
+                      >
+                        Sell
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="w-full"
+                        onClick={() => openStock(h.stockId)}
+                      >
+                        View
+                      </Button>
                     </div>
-                  </motion.button>
+                  </motion.div>
                 ))}
               </div>
             )}

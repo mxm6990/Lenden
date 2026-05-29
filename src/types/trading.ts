@@ -11,4 +11,9 @@ export interface MockOrderReceipt {
   buyingPowerAfter: number
   timestamp: string
   status: 'Mock Filled'
+  /** Sell-only fields */
+  grossProceeds?: number
+  netProceeds?: number
+  costBasis?: number
+  realizedGainLoss?: number
 }

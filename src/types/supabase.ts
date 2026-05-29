@@ -32,6 +32,7 @@ export interface TransactionRowDb {
   status: string
   note: string | null
   mock_order_id: string | null
+  realized_gain_loss: number | null
   created_at: string
 }
 
@@ -40,6 +41,18 @@ export interface SubmitMockBuyRpcResult {
   buyingPowerAfter: number
   filledShares: number
   executionPrice: number
+}
+
+export interface SubmitMockSellRpcResult {
+  orderId: string
+  buyingPowerAfter: number
+  filledShares: number
+  executionPrice: number
+  grossProceeds: number
+  feeBdt: number
+  netProceeds: number
+  costBasis: number
+  realizedGainLoss: number
 }
 
 export interface SubmitMockBuyRpcArgs {
@@ -74,6 +87,17 @@ export interface Database {
       submit_mock_buy: {
         Args: SubmitMockBuyRpcArgs
         Returns: SubmitMockBuyRpcResult
+      }
+      submit_mock_sell: {
+        Args: {
+          p_stock_id: string
+          p_symbol: string
+          p_ticker: string
+          p_shares: number
+          p_execution_price: number
+          p_fee_bdt: number
+        }
+        Returns: SubmitMockSellRpcResult
       }
     }
     Enums: Record<string, never>

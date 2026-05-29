@@ -70,7 +70,15 @@ This adds schema constraints, `transactions.mock_order_id`, indexes, and the `su
 
 Verification queries are included at the bottom of the migration file.
 
-## 9. Optional demo row (manual)
+## 10. Atomic mock sell + realized P&L
+
+Run:
+
+`migrations/005_submit_mock_sell.sql`
+
+This adds `transactions.realized_gain_loss` and the `submit_mock_sell` RPC for atomic mock sells with realized gain/loss tracking.
+
+## 11. Optional demo row (manual)
 
 Only after you create a user in **Authentication → Users**, insert a matching profile:
 

@@ -27,6 +27,7 @@ export interface TransactionRow {
   status: 'completed' | 'pending' | 'failed'
   note: string | null
   mock_order_id: string | null
+  realized_gain_loss?: number | null
   created_at: string
 }
 
@@ -69,6 +70,10 @@ export function mapTransactionRow(row: TransactionRow): PastTransaction {
     amount: Number(row.amount),
     status: row.status,
     note: row.note,
+    realizedGainLoss:
+      row.realized_gain_loss !== null && row.realized_gain_loss !== undefined
+        ? Number(row.realized_gain_loss)
+        : null,
   }
 }
 

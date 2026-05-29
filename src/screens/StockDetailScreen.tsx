@@ -12,6 +12,8 @@ import { Card } from '../components/ui/Card'
 import { StockHistoryChart } from '../components/charts/StockHistoryChart'
 import { ScreenHeader } from '../components/layout/ScreenHeader'
 
+const ACTION_BAR_BUTTON_CLASS = 'h-11 w-full'
+
 function QuoteMetric({ label, value }: { label: string; value: string }) {
   return (
     <Card className="p-3">
@@ -21,28 +23,80 @@ function QuoteMetric({ label, value }: { label: string; value: string }) {
   )
 }
 
+function SellActionSlot({
+  positionLoading,
+  canSell,
+  onSell,
+}: {
+  positionLoading: boolean
+  canSell: boolean
+  onSell: () => void
+}) {
+  return (
+    <div className={`min-w-0 flex-1 ${ACTION_BAR_BUTTON_CLASS}`}>
+      {positionLoading ? (
+        <button
+          type="button"
+          disabled
+          className={`inline-flex ${ACTION_BAR_BUTTON_CLASS} items-center justify-center rounded-2xl border border-white/10 bg-lenden-surface/60 px-3 text-xs font-semibold text-lenden-muted`}
+        >
+          Checking position…
+        </button>
+      ) : canSell ? (
+        <Button variant="outline" size="md" className={ACTION_BAR_BUTTON_CLASS} onClick={onSell}>
+          Sell
+        </Button>
+      ) : (
+        <div className={ACTION_BAR_BUTTON_CLASS} aria-hidden />
+      )}
+    </div>
+  )
+}
+
 export function StockDetailScreen() {
-  const { selectedStockId, closeOverlay, startBuy, watchlist, toggleWatchlist, portfolioVersion } =
+  const { selectedStockId, closeOverlay, startBuy, startSell, watchlist, toggleWatchlist, portfolioVersion } =
     useApp()
   const stock = selectedStockId ? getStock(selectedStockId) : null
   const [quote, setQuote] = useState<SecurityQuote | null>(null)
   const [position, setPosition] = useState<UserPosition | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [quoteLoading, setQuoteLoading] = useState(true)
+  const [positionLoading, setPositionLoading] = useState(true)
+  const [canSell, setCanSell] = useState(false)
 
   useEffect(() => {
     if (!selectedStockId) return
 
     let cancelled = false
-    setLoading(true)
+    setQuoteLoading(true)
 
-    Promise.all([fetchSecurityQuote(selectedStockId), fetchUserPosition(selectedStockId)])
-      .then(([quoteData, positionData]) => {
-        if (cancelled) return
-        setQuote(quoteData)
-        setPosition(positionData)
+    fetchSecurityQuote(selectedStockId)
+      .then((quoteData) => {
+        if (!cancelled) setQuote(quoteData)
       })
       .finally(() => {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) setQuoteLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedStockId])
+
+  useEffect(() => {
+    if (!selectedStockId) return
+
+    let cancelled = false
+    setPositionLoading(true)
+    setCanSell(false)
+
+    fetchUserPosition(selectedStockId)
+      .then((positionData) => {
+        if (cancelled) return
+        setPosition(positionData)
+        setCanSell(Boolean(positionData && positionData.sharesOwned > 0))
+      })
+      .finally(() => {
+        if (!cancelled) setPositionLoading(false)
       })
 
     return () => {
@@ -96,7 +150,7 @@ export function StockDetailScreen() {
 
         <StockHistoryChart ticker={stock.ticker} className="mb-4" />
 
-        {loading ? (
+        {quoteLoading ? (
           <div className="mb-4 grid grid-cols-2 gap-2">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="h-16 animate-pulse rounded-2xl bg-lenden-card" />
@@ -110,7 +164,7 @@ export function StockDetailScreen() {
           </div>
         )}
 
-        {!loading && position && (
+        {!positionLoading && position && (
           <YourPositionSection position={position} className="mb-6" />
         )}
 
@@ -120,10 +174,11 @@ export function StockDetailScreen() {
         </div>
 
         <div className="fixed right-0 bottom-0 left-0 mx-auto max-w-[430px] border-t border-white/5 bg-lenden-black/95 px-5 pt-3 pb-8 backdrop-blur-xl">
-          <div className="flex gap-3">
+          <div className="flex items-stretch gap-3">
             <Button
               variant="secondary"
-              className="flex-1"
+              size="md"
+              className={`min-w-0 flex-1 ${ACTION_BAR_BUTTON_CLASS}`}
               onClick={() => toggleWatchlist(stock.id)}
             >
               {inWatchlist ? (
@@ -138,7 +193,16 @@ export function StockDetailScreen() {
                 </>
               )}
             </Button>
-            <Button className="flex-[2]" size="lg" onClick={() => startBuy(stock.id)}>
+            <SellActionSlot
+              positionLoading={positionLoading}
+              canSell={canSell}
+              onSell={() => startSell(stock.id)}
+            />
+            <Button
+              size="md"
+              className={`min-w-0 flex-[1.4] ${ACTION_BAR_BUTTON_CLASS}`}
+              onClick={() => startBuy(stock.id)}
+            >
               Buy {stock.ticker}
             </Button>
           </div>

@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger'
   size?: 'sm' | 'md' | 'lg'
   fullWidth?: boolean
   children: ReactNode
@@ -10,6 +10,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 const variants = {
   primary: 'bg-lenden-mint text-lenden-black hover:bg-white active:scale-[0.98]',
   secondary: 'border border-white/10 bg-lenden-surface text-white hover:bg-lenden-card',
+  outline: 'border border-lenden-mint/35 bg-lenden-surface/40 text-lenden-mint hover:bg-lenden-mint/10 active:scale-[0.98]',
   ghost: 'text-lenden-muted hover:text-white hover:bg-white/5',
   danger: 'bg-red-500/15 text-red-400 border border-red-500/20',
 }

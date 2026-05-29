@@ -14,11 +14,20 @@ import { StockDetailScreen } from './screens/StockDetailScreen'
 import { AllocationDetailScreen } from './screens/AllocationDetailScreen'
 import { ProfileRouteScreen } from './screens/profile/ProfileRouteScreen'
 import { BuyFlowScreen } from './screens/BuyFlowScreen'
+import { SellFlowScreen } from './screens/SellFlowScreen'
 
 // import { AdminDashboardConcept } from './admin/AdminDashboardConcept' // dev-only ops concept
 
 function MainApp() {
   const { activeTab, overlay, profileRoute, closeProfileRoute } = useApp()
+
+  if (overlay === 'sell-flow') {
+    return (
+      <AppShell showNav={false}>
+        <SellFlowScreen />
+      </AppShell>
+    )
+  }
 
   if (overlay === 'buy-flow') {
     return (

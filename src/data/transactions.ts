@@ -17,6 +17,7 @@ export interface PastTransaction {
   amount: number
   status: TransactionStatus
   note: string | null
+  realizedGainLoss?: number | null
 }
 
 const MOCK_TRANSACTIONS: PastTransaction[] = [

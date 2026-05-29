@@ -178,7 +178,11 @@ function computeDayChangeFromHistory(history: PortfolioHistoryPoint[]): Portfoli
   return { amount, pct, sourceLabel: null }
 }
 
-function deriveCombinedPnL(summary: PortfolioSummary, source: PortfolioDataSource): CombinedPnLData {
+function deriveCombinedPnL(
+  summary: PortfolioSummary,
+  source: PortfolioDataSource,
+  realizedPnL: RealizedPnLData,
+): CombinedPnLData {
   if (source === 'demo') {
     const demo = getCombinedPnL()
     return {
@@ -190,17 +194,49 @@ function deriveCombinedPnL(summary: PortfolioSummary, source: PortfolioDataSourc
 
   return {
     unrealized: { amount: summary.totalGain, pct: summary.totalGainPct },
-    realized: 0,
-    total: summary.totalGain,
+    realized: realizedPnL.total,
+    total: summary.totalGain + realizedPnL.total,
   }
 }
 
-function deriveRealizedPnL(source: PortfolioDataSource): RealizedPnLData {
+function deriveRealizedPnLFromTransactions(
+  transactions: PastTransaction[],
+  source: PortfolioDataSource,
+): RealizedPnLData {
   if (source === 'demo') {
     return getRealizedPnL()
   }
 
-  return { total: 0, entries: [] }
+  const entries = transactions
+    .filter(
+      (tx) =>
+        tx.type === 'sell' && tx.realizedGainLoss !== null && tx.realizedGainLoss !== undefined,
+    )
+    .map((tx) => ({
+      id: tx.id,
+      date: tx.date,
+      ticker: tx.ticker ?? '—',
+      type: 'sell' as const,
+      amount: tx.realizedGainLoss ?? 0,
+      note: tx.note ?? 'Mock sell order',
+    }))
+
+  const total = entries.reduce((sum, entry) => sum + entry.amount, 0)
+  return { total, entries }
+}
+
+async function resolveTransactionsDataset(
+  source: PortfolioDataSource,
+): Promise<PastTransaction[]> {
+  if (source === 'demo') {
+    return delay(getPastTransactionsLocal())
+  }
+
+  const ctx = await getAuthenticatedContext()
+  if (!ctx) return []
+
+  const { data } = await fetchTransactionsFromSupabase(ctx.userId)
+  return data ?? []
 }
 
 function emptySummary(): PortfolioSummary {
@@ -291,6 +327,10 @@ export async function getPortfolioBundle(): Promise<PortfolioBundle> {
       ? { ...(await delay(getPortfolioDayChange())), sourceLabel: null }
       : computeDayChangeFromHistory(history)
 
+  const transactions = await resolveTransactionsDataset(dataset.source)
+  const realizedPnL = deriveRealizedPnLFromTransactions(transactions, dataset.source)
+  const combinedPnL = deriveCombinedPnL(summary, dataset.source, realizedPnL)
+
   const buyingPower = buyingPowerResult.error ? null : buyingPowerResult.data
   const accountValue = summary.totalValue + (buyingPower?.available ?? 0)
 
@@ -301,8 +341,8 @@ export async function getPortfolioBundle(): Promise<PortfolioBundle> {
     allocation,
     history,
     dayChange,
-    combinedPnL: deriveCombinedPnL(summary, dataset.source),
-    realizedPnL: deriveRealizedPnL(dataset.source),
+    combinedPnL,
+    realizedPnL,
     buyingPower,
     buyingPowerError: buyingPowerResult.error,
     accountValue,
