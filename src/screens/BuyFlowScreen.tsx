@@ -3,28 +3,34 @@ import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { formatBDT } from '../data/stocks'
-import { previewOrder, submitMockOrder, type OrderFailureReason } from '../services/tradingApi'
-import { getBuyingPower } from '../services/portfolioApi'
+import { parseAmountInput } from '../lib/parseAmountInput'
+import {
+  previewOrder,
+  submitMockOrder,
+  type OrderFailureReason,
+} from '../services/tradingApi'
+import { getBuyingPowerResult } from '../services/portfolioApi'
 import { getStockById } from '../services/marketApi'
+import type { MockOrderReceipt } from '../types/trading'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { ScreenHeader } from '../components/layout/ScreenHeader'
-import { PrototypeBanner } from '../components/trust/ComplianceCopy'
+import { PrototypeBanner, PrototypeModeBadge } from '../components/trust/ComplianceCopy'
 import { TrustState } from '../components/trust/TrustState'
 
 const PRESET_AMOUNTS = [500, 1000, 2500, 5000]
 
 const FAILURE_COPY: Record<OrderFailureReason, { title: string; message: string }> = {
   insufficient_buying_power: {
-    title: 'Insufficient buying power',
-    message: 'Your BO account does not have enough available cash for this mock order.',
+    title: 'Not enough buying power',
+    message: 'This order exceeds your buying power.',
   },
   market_closed: {
     title: 'Market closed',
-    message: 'DSE is closed. Mock orders can only be previewed during trading hours in this prototype.',
+    message: 'DSE is closed. Mock orders can only be placed during trading hours in this prototype.',
   },
   preview_failed: {
-    title: 'Order preview failed',
+    title: 'Could not preview order',
     message: 'We could not prepare your order preview. Please try again.',
   },
   confirmation_timeout: {
@@ -35,94 +41,166 @@ const FAILURE_COPY: Record<OrderFailureReason, { title: string; message: string 
     title: 'Mock order rejected',
     message: 'This demonstration order was rejected. No real securities were purchased.',
   },
+  auth_required: {
+    title: 'Sign in required',
+    message: 'Sign in with your account to place persistent mock orders.',
+  },
+  persist_failed: {
+    title: 'Could not save order',
+    message: 'Something went wrong while saving your mock order.',
+  },
+}
+
+function ReceiptRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-3 text-sm">
+      <span className="text-lenden-muted">{label}</span>
+      <span className="text-right font-semibold text-white">{value}</span>
+    </div>
+  )
 }
 
 export function BuyFlowScreen() {
   const {
     selectedStockId,
     buyStep,
-    buyAmount,
-    setBuyAmount,
     setBuyStep,
     closeOverlay,
+    isDemo,
+    refreshAllUserData,
+    portfolioVersion,
   } = useApp()
 
   const [stock, setStock] = useState<Awaited<ReturnType<typeof getStockById>>>(null)
-  const [buyingPowerAvailable, setBuyingPowerAvailable] = useState(0)
+  const [buyingPower, setBuyingPower] = useState(0)
+  const [amountInput, setAmountInput] = useState('')
   const [preview, setPreview] = useState<Awaited<ReturnType<typeof previewOrder>> | null>(null)
   const [failure, setFailure] = useState<OrderFailureReason | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [orderId, setOrderId] = useState<string | null>(null)
+  const [receipt, setReceipt] = useState<MockOrderReceipt | null>(null)
 
   useEffect(() => {
     if (!selectedStockId) return
     getStockById(selectedStockId).then(setStock)
-    getBuyingPower().then((bp) => setBuyingPowerAvailable(bp?.available ?? 0))
   }, [selectedStockId])
+
+  useEffect(() => {
+    getBuyingPowerResult().then((result) => {
+      if (!result.error) {
+        setBuyingPower(result.data.available)
+      }
+    })
+  }, [portfolioVersion, buyStep])
 
   if (!stock) return null
 
-  const fee = preview && preview.ok ? preview.preview.feeBdt : Math.round(buyAmount * 0.0015 * 100) / 100
-  const estimatedShares =
-    preview && preview.ok
-      ? preview.preview.estimatedShares
-      : Math.floor(((buyAmount - fee) / stock.price) * 100) / 100
+  const parsedAmount = parseAmountInput(amountInput)
+  const showPreview = buyStep === 'confirm' && preview && preview.ok
 
-  const handleReview = async () => {
+  const handleContinue = async () => {
     setFailure(null)
+    setErrorMessage(null)
+    setPreview(null)
+
+    if (!amountInput.trim()) {
+      setErrorMessage('Enter an amount to invest.')
+      return
+    }
+
+    if (parsedAmount === null || parsedAmount <= 0) {
+      setErrorMessage('Enter a valid amount greater than zero.')
+      return
+    }
+
+    if (parsedAmount > buyingPower) {
+      setFailure('insufficient_buying_power')
+      setErrorMessage('This order exceeds your buying power.')
+      return
+    }
+
     const result = await previewOrder(
-      { stockId: stock.id, side: 'buy', amountBdt: buyAmount },
-      buyingPowerAvailable,
+      { stockId: stock.id, side: 'buy', amountBdt: parsedAmount },
+      buyingPower,
     )
+
     setPreview(result)
     if (!result.ok) {
       setFailure(result.reason)
+      setErrorMessage(result.errorMessage ?? FAILURE_COPY[result.reason].message)
       return
     }
+
     setBuyStep('confirm')
   }
 
   const handleConfirm = async () => {
+    if (!parsedAmount || parsedAmount <= 0) return
+
     setSubmitting(true)
     setFailure(null)
+    setErrorMessage(null)
+
     const result = await submitMockOrder({
       previewId: 'mock_preview',
       stockId: stock.id,
       side: 'buy',
-      amountBdt: buyAmount,
+      amountBdt: parsedAmount,
     })
+
     setSubmitting(false)
+
     if (!result.ok) {
       setFailure(result.reason)
+      setErrorMessage(result.errorMessage ?? FAILURE_COPY[result.reason].message)
       return
     }
-    setOrderId(result.order.orderId)
+
+    setReceipt(result.receipt)
+    setBuyingPower(result.receipt.buyingPowerAfter)
+    await refreshAllUserData()
     setBuyStep('success')
   }
 
-  if (buyStep === 'success') {
+  if (buyStep === 'success' && receipt) {
     return (
-      <div className="flex min-h-svh flex-col items-center justify-center px-6 text-center">
-        <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-lenden-mint/15"
-        >
-          <CheckCircle2 className="h-10 w-10 text-lenden-mint" />
-        </motion.div>
-        <h2 className="text-2xl font-bold text-white">Mock order placed</h2>
-        <p className="mt-2 text-sm text-lenden-muted">
-          ~{estimatedShares} shares of {stock.ticker} · {formatBDT(buyAmount)}
-        </p>
-        {orderId && (
-          <p className="mt-1 text-xs text-lenden-muted">Reference: {orderId}</p>
-        )}
-        <p className="mt-3 text-[11px] text-lenden-muted">Mock trading only — no real order routing.</p>
-        <div className="mt-8 w-full space-y-3">
+      <div className="px-5 pb-8 pt-4">
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="mb-6 flex flex-col items-center text-center">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-lenden-mint/15">
+              <CheckCircle2 className="h-8 w-8 text-lenden-mint" />
+            </div>
+            <h2 className="text-2xl font-bold text-white">Mock order filled</h2>
+            <p className="mt-1 text-sm text-lenden-muted">Status: Mock Filled</p>
+          </div>
+
+          <Card className="mb-4 space-y-3 p-5">
+            <ReceiptRow label="Order ID" value={receipt.orderId.slice(0, 8) + '…'} />
+            <ReceiptRow label="Ticker" value={receipt.ticker} />
+            <ReceiptRow label="Side" value={receipt.side.toUpperCase()} />
+            <ReceiptRow label="Amount invested" value={formatBDT(receipt.amountInvested)} />
+            <ReceiptRow label="Estimated shares" value={`~${receipt.estimatedShares}`} />
+            <ReceiptRow label="Price used" value={formatBDT(receipt.priceUsed)} />
+            <ReceiptRow label="Fees" value={formatBDT(receipt.fees)} />
+            <ReceiptRow label="Total required" value={formatBDT(receipt.totalRequired)} />
+            <ReceiptRow label="Buying power after" value={formatBDT(receipt.buyingPowerAfter)} />
+            <ReceiptRow
+              label="Timestamp"
+              value={new Date(receipt.timestamp).toLocaleString('en-GB', {
+                dateStyle: 'medium',
+                timeStyle: 'short',
+              })}
+            />
+          </Card>
+
+          <p className="mb-6 text-center text-[11px] leading-relaxed text-lenden-muted">
+            Mock order only — no real securities transaction occurred.
+          </p>
+
           <Button fullWidth size="lg" onClick={closeOverlay}>
             Back to Home
           </Button>
-        </div>
+        </motion.div>
       </div>
     )
   }
@@ -130,73 +208,49 @@ export function BuyFlowScreen() {
   return (
     <>
       <ScreenHeader
-        title={buyStep === 'confirm' ? 'Confirm order' : 'Buy stock'}
+        title={`Buy ${stock.ticker}`}
         onBack={buyStep === 'confirm' ? () => setBuyStep('amount') : closeOverlay}
       />
       <div className="px-5 pb-8">
         <PrototypeBanner className="mb-4" />
+        {isDemo && <PrototypeModeBadge className="mb-3" />}
 
-        {failure && (
+        {(failure || errorMessage) && (
           <TrustState
             variant="warning"
-            title={FAILURE_COPY[failure].title}
-            message={FAILURE_COPY[failure].message}
+            title={failure ? FAILURE_COPY[failure].title : 'Check your order'}
+            message={errorMessage ?? (failure ? FAILURE_COPY[failure].message : '')}
             className="mb-4"
           />
         )}
 
-        <Card className="mb-4 flex items-center gap-3 p-4">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-lenden-green text-xs font-bold text-white">
-            {stock.ticker.slice(0, 2)}
-          </div>
-          <div className="flex-1">
-            <p className="font-bold text-white">{stock.ticker}</p>
-            <p className="text-xs text-lenden-muted">{formatBDT(stock.price)} per share</p>
-          </div>
+        <Card className="mb-4 p-5">
+          <p className="text-sm font-medium text-lenden-muted">Buying Power</p>
+          <p className="mt-1 text-3xl font-bold tabular-nums text-white">{formatBDT(buyingPower)}</p>
+          <p className="mt-1 text-xs text-lenden-muted">Available to invest in this prototype</p>
         </Card>
 
-        {buyStep === 'confirm' ? (
+        {buyStep === 'amount' && (
           <>
-            <Card className="mb-4 p-5">
-              <div className="space-y-3">
-                {[
-                  { label: 'Order amount', value: formatBDT(buyAmount) },
-                  { label: 'Estimated shares', value: `~${estimatedShares}` },
-                  { label: 'Price per share', value: formatBDT(stock.price) },
-                  { label: 'Trading fee', value: formatBDT(fee) },
-                ].map((row) => (
-                  <div key={row.label} className="flex justify-between text-sm">
-                    <span className="text-lenden-muted">{row.label}</span>
-                    <span className="font-semibold text-white">{row.value}</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-            <p className="mb-6 text-center text-[11px] text-lenden-muted">
-              Mock trading only. Not financial advice. Review carefully before confirming.
-            </p>
-            <Button fullWidth size="lg" disabled={submitting} onClick={handleConfirm}>
-              {submitting ? 'Confirming…' : 'Confirm mock purchase'}
-            </Button>
-          </>
-        ) : (
-          <>
-            <div className="mb-5 rounded-2xl border border-white/5 bg-lenden-surface p-4">
-              <p className="text-xs text-lenden-muted">Buying power (BO account)</p>
-              <p className="text-xl font-bold text-white">{formatBDT(buyingPowerAvailable)}</p>
-            </div>
-
             <label className="mb-3 block">
-              <span className="mb-1.5 block text-xs font-medium text-lenden-muted">Amount (BDT)</span>
+              <span className="mb-1.5 block text-xs font-medium text-lenden-muted">
+                Amount to invest (BDT)
+              </span>
               <div className="relative">
                 <span className="absolute top-1/2 left-4 -translate-y-1/2 text-lg font-bold text-lenden-muted">
                   ৳
                 </span>
                 <input
-                  type="number"
-                  value={buyAmount}
-                  onChange={(e) => setBuyAmount(Number(e.target.value) || 0)}
-                  className="w-full rounded-2xl border border-white/10 bg-lenden-card py-4 pr-4 pl-10 text-2xl font-bold text-white outline-none focus:border-lenden-mint/40"
+                  type="text"
+                  inputMode="decimal"
+                  value={amountInput}
+                  placeholder="Enter amount"
+                  onChange={(e) => {
+                    setAmountInput(e.target.value)
+                    setErrorMessage(null)
+                    setFailure(null)
+                  }}
+                  className="w-full rounded-2xl border border-white/10 bg-lenden-card py-4 pr-4 pl-10 text-2xl font-bold text-white outline-none placeholder:text-lenden-muted/50 focus:border-lenden-mint/40"
                 />
               </div>
             </label>
@@ -205,9 +259,10 @@ export function BuyFlowScreen() {
               {PRESET_AMOUNTS.map((amt) => (
                 <button
                   key={amt}
-                  onClick={() => setBuyAmount(amt)}
+                  type="button"
+                  onClick={() => setAmountInput(String(amt))}
                   className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
-                    buyAmount === amt
+                    parsedAmount === amt
                       ? 'bg-lenden-mint text-lenden-black'
                       : 'bg-lenden-surface text-lenden-muted'
                   }`}
@@ -217,13 +272,33 @@ export function BuyFlowScreen() {
               ))}
             </div>
 
-            <Button
-              fullWidth
-              size="lg"
-              disabled={buyAmount <= 0 || buyAmount > buyingPowerAvailable}
-              onClick={handleReview}
-            >
-              Review order
+            <Button fullWidth size="lg" onClick={handleContinue}>
+              Preview order
+            </Button>
+          </>
+        )}
+
+        {showPreview && (
+          <>
+            <Card className="mb-4 space-y-3 p-5">
+              <p className="text-sm font-semibold text-white">Order preview</p>
+              <ReceiptRow label="Amount to invest" value={formatBDT(preview.preview.amountBdt)} />
+              <ReceiptRow label="Estimated shares" value={`~${preview.preview.estimatedShares}`} />
+              <ReceiptRow label="Estimated price" value={formatBDT(preview.preview.pricePerShare)} />
+              <ReceiptRow label="Estimated fees" value={formatBDT(preview.preview.feeBdt)} />
+              <ReceiptRow label="Total required" value={formatBDT(preview.preview.totalBdt)} />
+              <ReceiptRow
+                label="Buying power after purchase"
+                value={formatBDT(preview.buyingPowerAfter)}
+              />
+            </Card>
+
+            <p className="mb-4 text-center text-[11px] leading-relaxed text-lenden-muted">
+              Mock trading only — no real order is submitted. Not financial advice.
+            </p>
+
+            <Button fullWidth size="lg" disabled={submitting} onClick={handleConfirm}>
+              {submitting ? 'Confirming…' : 'Confirm mock purchase'}
             </Button>
           </>
         )}

@@ -26,6 +26,26 @@ export function PrototypeBanner({ className = '' }: { className?: string }) {
   )
 }
 
+export function PrototypeModeBadge({ className = '' }: { className?: string }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/15 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-amber-200 uppercase ${className}`}
+    >
+      Prototype mode
+    </span>
+  )
+}
+
+export function DevMarketOverrideBadge({ className = '' }: { className?: string }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border border-sky-400/40 bg-sky-500/15 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-sky-200 uppercase ${className}`}
+    >
+      Dev Market Override Active
+    </span>
+  )
+}
+
 export function ComplianceFooter({ className = '' }: { className?: string }) {
   return (
     <p className={`text-center text-[10px] leading-relaxed text-lenden-muted ${className}`}>

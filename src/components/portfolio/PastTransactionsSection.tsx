@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useApp } from '../../context/AppContext'
 import { formatBDT } from '../../data/stocks'
 import { getTransactionLabel, type PastTransaction } from '../../data/transactions'
-import { getPastTransactions } from '../../services/portfolioApi'
+import { getPastTransactionsResult } from '../../services/portfolioApi'
 import { TrustState } from '../trust/TrustState'
 
 function transactionTitle(tx: PastTransaction): string {
@@ -18,16 +19,30 @@ interface PastTransactionsSectionProps {
 }
 
 export function PastTransactionsSection({ limit, className = '' }: PastTransactionsSectionProps) {
-  const [transactions, setTransactions] = useState<PastTransaction[] | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { portfolioVersion } = useApp()
+  const [transactions, setTransactions] = useState<PastTransaction[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [initialLoad, setInitialLoad] = useState(true)
+  const loadSeq = useRef(0)
 
   useEffect(() => {
-    getPastTransactions()
-      .then((data) => setTransactions(data ? (limit ? data.slice(0, limit) : data) : null))
-      .finally(() => setLoading(false))
-  }, [limit])
+    const seq = ++loadSeq.current
 
-  if (loading) {
+    getPastTransactionsResult()
+      .then((result) => {
+        if (seq !== loadSeq.current) return
+        setLoadError(result.error)
+        const data = limit ? result.data.slice(0, limit) : result.data
+        setTransactions(data)
+      })
+      .finally(() => {
+        if (seq === loadSeq.current) {
+          setInitialLoad(false)
+        }
+      })
+  }, [limit, portfolioVersion])
+
+  if (initialLoad) {
     return (
       <section className={className}>
         <p className="mb-3 text-sm font-semibold text-white">Past transactions</p>
@@ -36,14 +51,27 @@ export function PastTransactionsSection({ limit, className = '' }: PastTransacti
     )
   }
 
-  if (transactions === null) {
+  if (loadError) {
     return (
       <section className={className}>
         <p className="mb-3 text-sm font-semibold text-white">Past transactions</p>
         <TrustState
           variant="warning"
           title="Transaction history unavailable"
-          message="We could not load your recent activity. Your portfolio data may still be available."
+          message={loadError}
+        />
+      </section>
+    )
+  }
+
+  if (transactions.length === 0) {
+    return (
+      <section className={className}>
+        <p className="mb-3 text-sm font-semibold text-white">Past transactions</p>
+        <TrustState
+          variant="empty"
+          title="No transactions yet"
+          message="Your mock buy and sell activity will appear here."
         />
       </section>
     )

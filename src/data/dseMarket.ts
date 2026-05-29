@@ -1,3 +1,5 @@
+import { isDevMarketOverrideActive } from '../lib/devMarketOverride'
+
 /** Dhaka Stock Exchange — Sun–Thu, pre-open 9:45 AM, trading 10:00 AM – 2:30 PM (Asia/Dhaka) */
 
 export const DSE_SCHEDULE = {
@@ -58,7 +60,17 @@ export function getDSEMarketInfo(now = new Date()) {
   else if (status === 'Pre-open') sessionLabel = openLabel
   else if (isTradingDay && minutes < preOpenMinutes) sessionLabel = openLabel
 
-  return { status, sessionLabel, hoursLabel: DSE_SCHEDULE.hoursLabel }
+  const info = { status, sessionLabel, hoursLabel: DSE_SCHEDULE.hoursLabel }
+
+  if (isDevMarketOverrideActive()) {
+    return {
+      ...info,
+      status: 'Open' as const,
+      sessionLabel: 'Dev market override — DSE treated as open for local testing',
+    }
+  }
+
+  return info
 }
 
 export const DSE_STATUS_STYLES: Record<DSEMarketStatus, string> = {

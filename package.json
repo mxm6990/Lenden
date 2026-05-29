@@ -15,7 +15,8 @@
     "ios:doctor": "bash scripts/ios-doctor.sh",
     "ios:install-platform": "xcodebuild -downloadPlatform iOS",
     "ios:run": "npm run ios:sync && npx cap run ios --target=\"iPhone 16\"",
-    "ios": "npm run ios:sync && npm run ios:open"
+    "ios": "npm run ios:sync && npm run ios:open",
+    "supabase:check": "node scripts/check-supabase.mjs"
   },
   "dependencies": {
     "@capacitor/core": "^7.4.2",

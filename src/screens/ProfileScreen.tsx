@@ -1,5 +1,5 @@
-import { LogOut } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { LogOut, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import {
   ProfileCardRow,
@@ -7,10 +7,17 @@ import {
   ProfileSection,
 } from '../components/profile/ProfileSection'
 import { ScreenHeader } from '../components/layout/ScreenHeader'
-import { getUserProfile, getComplianceStatus } from '../services/profileApi'
-import { PrototypeBanner } from '../components/trust/ComplianceCopy'
-import { TrustState } from '../components/trust/TrustState'
-import type { ProfileRoute, UserProfile, VerificationStatus } from '../types/profile'
+import {
+  getComplianceStatus,
+  getSecuritySettings,
+  getUserProfileResult,
+} from '../services/profileApi'
+import { appendAuditLog } from '../services/auditApi'
+import { getAuthenticatedUserId } from '../lib/supabaseAuth'
+import { PrototypeBanner, PrototypeModeBadge } from '../components/trust/ComplianceCopy'
+import { LoadingSkeleton, TrustState } from '../components/trust/TrustState'
+import { Button } from '../components/ui/Button'
+import type { ProfileRoute, SecuritySettings, UserProfile, VerificationStatus } from '../types/profile'
 
 function statusLabel(status: VerificationStatus | string): string {
   return status
@@ -41,28 +48,131 @@ function riskLabel(status: UserProfile['riskProfileStatus']): string {
   return map[status]
 }
 
+type ProfileLoadState = 'loading' | 'success' | 'error'
+
+/** Survives Strict Mode remount — one PROFILE_VIEWED audit per session per user. */
+const profileViewAuditLoggedSessionKeys = new Set<string>()
+
 export function ProfileScreen() {
-  const { openProfileRoute, signOut } = useApp()
+  const { openProfileRoute, signOut, isDemo, profileVersion } = useApp()
   const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [security, setSecurity] = useState<SecuritySettings | null>(null)
   const [kycPending, setKycPending] = useState(false)
   const [boPending, setBoPending] = useState(false)
+  const [loadState, setLoadState] = useState<ProfileLoadState>('loading')
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const profileViewLoggedRef = useRef(false)
 
-  useEffect(() => {
-    Promise.all([getUserProfile(), getComplianceStatus()]).then(([user, compliance]) => {
-      setProfile(user)
+  const loadProfile = useCallback(async () => {
+    setLoadState('loading')
+    setLoadError(null)
+
+    if (import.meta.env.DEV) {
+      console.debug('profile load started')
+    }
+
+    try {
+      const authUserId = await getAuthenticatedUserId()
+      if (import.meta.env.DEV) {
+        console.debug('auth user id', authUserId)
+      }
+
+      const [profileResult, compliance, securitySettings] = await Promise.all([
+        getUserProfileResult(),
+        getComplianceStatus(),
+        getSecuritySettings(),
+      ])
+
+      if (profileResult.error || !profileResult.data) {
+        const message = profileResult.error ?? 'Could not load your profile.'
+        if (import.meta.env.DEV) {
+          console.debug('profile load failed', message)
+        }
+        setProfile(null)
+        setLoadError(message)
+        setLoadState('error')
+        return
+      }
+
+      if (import.meta.env.DEV) {
+        console.debug('profile loaded', { source: profileResult.source, userId: profileResult.data.userId })
+      }
+
+      setProfile(profileResult.data)
+      setSecurity(securitySettings)
       setKycPending(compliance.kyc.record.status === 'pending')
       setBoPending(compliance.boAccount.status === 'pending')
-    })
+      setLoadState('success')
+
+      if (!profileViewLoggedRef.current) {
+        profileViewLoggedRef.current = true
+        const actorId = authUserId ?? profileResult.data.userId
+        const sessionKey = `${actorId}:${profileResult.data.userId}`
+        if (!profileViewAuditLoggedSessionKeys.has(sessionKey)) {
+          profileViewAuditLoggedSessionKeys.add(sessionKey)
+          await appendAuditLog({
+            action: 'PROFILE_VIEWED',
+            actorId,
+            targetId: profileResult.data.userId,
+          })
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not load your profile.'
+      if (import.meta.env.DEV) {
+        console.debug('profile load failed', message)
+      }
+      setProfile(null)
+      setLoadError(message)
+      setLoadState('error')
+    }
   }, [])
+
+  useEffect(() => {
+    void loadProfile()
+  }, [loadProfile, profileVersion])
 
   const open = (route: ProfileRoute) => () => openProfileRoute(route)
 
-  if (!profile) {
+  if (loadState === 'loading') {
     return (
       <>
         <ScreenHeader title="Profile" subtitle="Account & compliance" large />
         <div className="px-5 pb-4">
-          <div className="h-32 animate-pulse rounded-2xl bg-lenden-card" />
+          <LoadingSkeleton rows={4} />
+        </div>
+      </>
+    )
+  }
+
+  if (loadState === 'error' || !profile) {
+    return (
+      <>
+        <ScreenHeader title="Profile" subtitle="Account & compliance" large />
+        <div className="px-5 pb-4">
+          <PrototypeBanner className="mb-4" />
+          <TrustState
+            variant="error"
+            title="Profile unavailable"
+            message={
+              loadError ??
+              'We could not load your account profile. Check your connection and try again.'
+            }
+          />
+          <Button fullWidth className="mt-4" onClick={() => void loadProfile()}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Retry
+          </Button>
+          {!isDemo && (
+            <button
+              type="button"
+              onClick={signOut}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 py-3.5 text-sm font-semibold text-red-400"
+            >
+              <LogOut className="h-4 w-4" />
+              Sign Out
+            </button>
+          )}
         </div>
       </>
     )
@@ -75,6 +185,7 @@ export function ProfileScreen() {
       <ScreenHeader title="Profile" subtitle="Account & compliance" large />
       <div className="px-5 pb-4">
         <PrototypeBanner className="mb-4" />
+        {isDemo && <PrototypeModeBadge className="mb-3" />}
         {kycPending && (
           <TrustState
             variant="warning"
@@ -159,11 +270,23 @@ export function ProfileScreen() {
 
         <ProfileSection title="Security" defaultOpen={false}>
           <ProfileCardRow label="Change Password" onClick={open('security-settings')} />
-          <ProfileCardRow label="Two-Factor Authentication" value="Off" onClick={open('security-settings')} />
+          <ProfileCardRow
+            label="Two-Factor Authentication"
+            value={security?.twoFactorEnabled ? 'On' : 'Off'}
+            onClick={open('security-settings')}
+          />
           <ProfileCardRow label="Device Management" onClick={open('security-settings')} />
           <ProfileCardRow label="Login History" onClick={open('security-settings')} />
-          <ProfileCardRow label="Transaction PIN" value="Set" onClick={open('security-settings')} />
-          <ProfileCardRow label="Biometric Login" value="On" onClick={open('security-settings')} />
+          <ProfileCardRow
+            label="Transaction PIN"
+            value={security?.transactionPinSet ? 'Set' : 'Not set'}
+            onClick={open('security-settings')}
+          />
+          <ProfileCardRow
+            label="Biometric Login"
+            value={security?.biometricEnabled ? 'On' : 'Off'}
+            onClick={open('security-settings')}
+          />
         </ProfileSection>
 
         <ProfileSection title="Support" defaultOpen={false}>

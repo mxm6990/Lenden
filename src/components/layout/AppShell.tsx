@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react'
 import { BottomNav } from './BottomNav'
+import { DevDataRefresh } from '../dev/DevDataRefresh'
+import { DevMarketOverrideBadge } from '../trust/ComplianceCopy'
+import { isDevMarketOverrideActive } from '../../lib/devMarketOverride'
 import { isNativeApp } from '../../utils/platform'
 
 const shellWidth = isNativeApp ? 'w-full max-w-none' : 'mx-auto max-w-[430px]'
@@ -10,8 +13,15 @@ interface AppShellProps {
 }
 
 export function AppShell({ children, showNav = true }: AppShellProps) {
+  const devMarketOverride = isDevMarketOverrideActive()
+
   return (
     <div className={`${shellWidth} flex h-svh max-h-svh flex-col overflow-hidden bg-lenden-black`}>
+      {devMarketOverride && (
+        <div className="shrink-0 border-b border-sky-400/20 bg-sky-500/10 px-4 py-2 text-center">
+          <DevMarketOverrideBadge />
+        </div>
+      )}
       <main
         className={`min-h-0 flex-1 overflow-x-clip overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch] ${
           showNav ? 'main-scroll-padding' : 'safe-bottom-lg'
@@ -20,6 +30,7 @@ export function AppShell({ children, showNav = true }: AppShellProps) {
         {children}
       </main>
       {showNav && <BottomNav />}
+      <DevDataRefresh />
     </div>
   )
 }

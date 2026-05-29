@@ -81,7 +81,31 @@ function groupHoldingsByIndustry(holdings: EnrichedHolding[]) {
   return groups
 }
 
-/** Local aggregation — replace body of `fetchPortfolioAllocation` when API is live */
+export function buildAllocationFromEnrichedHoldings(holdings: EnrichedHolding[]): AllocationSegment[] {
+  const totalValue = holdings.reduce((sum, holding) => sum + holding.currentValue, 0)
+  if (totalValue <= 0) return []
+
+  const groups = groupHoldingsByIndustry(holdings)
+
+  return INDUSTRY_ORDER.filter((key) => groups.has(key)).map((id) => {
+    const group = groups.get(id)!
+    const palette = ALLOCATION_PALETTE[id]
+    const pct = (group.value / totalValue) * 100
+
+    return {
+      id,
+      label: INDUSTRY_LABELS[id],
+      value: group.value,
+      pct,
+      color: palette.color,
+      colorClass: palette.colorClass,
+      holdingCount: group.tickers.length,
+      tickers: group.tickers,
+    }
+  })
+}
+
+/** Demo-only sync helper — use portfolioApi.getAllocationBreakdown() for app screens. */
 export function buildAllocationFromHoldings(): AllocationSegment[] {
   const { holdings, totalValue } = getPortfolioSummary()
   const groups = groupHoldingsByIndustry(holdings)
@@ -141,7 +165,7 @@ export async function fetchPortfolioAllocation(): Promise<AllocationSegment[]> {
   return buildAllocationFromHoldings()
 }
 
-/** Sync helper for current demo UI — mirrors `fetchPortfolioAllocation` locally */
+/** Demo-only sync helper — use portfolioApi.getAllocationBreakdown() for app screens. */
 export function getPortfolioAllocationByIndustry(): AllocationSegment[] {
   return buildAllocationFromHoldings()
 }

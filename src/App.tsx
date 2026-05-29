@@ -3,6 +3,7 @@ import { AppShell, AuthShell } from './components/layout/AppShell'
 import { isNativeApp } from './utils/platform'
 import { SplashScreen } from './screens/auth/SplashScreen'
 import { SignUpScreen } from './screens/auth/SignUpScreen'
+import { SignInScreen } from './screens/auth/SignInScreen'
 import { KycScreen } from './screens/auth/KycScreen'
 import { HomeScreen } from './screens/HomeScreen'
 import { MarketScreen } from './screens/MarketScreen'
@@ -63,11 +64,22 @@ function MainApp() {
 }
 
 function AuthFlow() {
-  const { authScreen } = useApp()
+  const { authScreen, authReady } = useApp()
+
+  if (!authReady) {
+    return (
+      <AuthShell>
+        <div className="flex min-h-svh items-center justify-center px-6">
+          <p className="text-sm text-lenden-muted">Loading…</p>
+        </div>
+      </AuthShell>
+    )
+  }
 
   const screens = {
     splash: <SplashScreen />,
     signup: <SignUpScreen />,
+    signin: <SignInScreen />,
     kyc: <KycScreen />,
   }
 

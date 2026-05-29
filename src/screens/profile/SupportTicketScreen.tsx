@@ -1,7 +1,6 @@
 import { CheckCircle2, Paperclip } from 'lucide-react'
 import { useState } from 'react'
-import { submitSupportTicket } from '../../services/profileApi'
-import { appendAuditLog } from '../../services/auditApi'
+import { submitSupportTicket } from '../../services/supportApi'
 import type { SupportTicketCategory } from '../../types/profile'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
@@ -40,11 +39,6 @@ export function SupportTicketScreen({ onBack }: SupportTicketScreenProps) {
         subject: subject.trim(),
         description: message.trim(),
       })
-      await appendAuditLog({
-        action: 'SUPPORT_TICKET_CREATED',
-        actorId: 'usr_mahathir_001',
-        targetId: ticket.id,
-      })
       setTicketId(ticket.id)
     } catch {
       setFailed(true)
@@ -60,10 +54,10 @@ export function SupportTicketScreen({ onBack }: SupportTicketScreenProps) {
           <CheckCircle2 className="mb-4 h-12 w-12 text-lenden-mint" />
           <p className="text-lg font-bold text-white">Ticket submitted</p>
           <p className="mt-2 text-sm text-lenden-muted">
-            Reference ID: <span className="font-mono text-white">{ticketId}</span>
+            Ticket ID: <span className="font-mono text-white">{ticketId}</span>
           </p>
           <p className="mt-2 text-xs text-lenden-muted">
-            This is a mock submission stored locally for prototype demos.
+            Your request has been recorded. This prototype does not connect to a live support desk.
           </p>
           <Button fullWidth className="mt-6" onClick={onBack}>
             Back to profile

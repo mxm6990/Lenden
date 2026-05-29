@@ -8,7 +8,8 @@ import type { SecurityQuote } from '../types/security'
 import type { UserPosition } from '../types/position'
 import { YourPositionSection } from '../components/portfolio/YourPositionSection'
 import { Button } from '../components/ui/Button'
-import { Card, MiniChart } from '../components/ui/Card'
+import { Card } from '../components/ui/Card'
+import { StockHistoryChart } from '../components/charts/StockHistoryChart'
 import { ScreenHeader } from '../components/layout/ScreenHeader'
 
 function QuoteMetric({ label, value }: { label: string; value: string }) {
@@ -21,7 +22,8 @@ function QuoteMetric({ label, value }: { label: string; value: string }) {
 }
 
 export function StockDetailScreen() {
-  const { selectedStockId, closeOverlay, startBuy, watchlist, toggleWatchlist } = useApp()
+  const { selectedStockId, closeOverlay, startBuy, watchlist, toggleWatchlist, portfolioVersion } =
+    useApp()
   const stock = selectedStockId ? getStock(selectedStockId) : null
   const [quote, setQuote] = useState<SecurityQuote | null>(null)
   const [position, setPosition] = useState<UserPosition | null>(null)
@@ -46,7 +48,7 @@ export function StockDetailScreen() {
     return () => {
       cancelled = true
     }
-  }, [selectedStockId])
+  }, [selectedStockId, portfolioVersion])
 
   if (!stock) return null
 
@@ -92,10 +94,7 @@ export function StockDetailScreen() {
           </div>
         </div>
 
-        <Card className="mb-4 p-4">
-          <MiniChart points={stock.chartPoints} className="h-32" />
-          <p className="mt-2 text-center text-[10px] text-lenden-muted">Last 10 trading days</p>
-        </Card>
+        <StockHistoryChart ticker={stock.ticker} className="mb-4" />
 
         {loading ? (
           <div className="mb-4 grid grid-cols-2 gap-2">

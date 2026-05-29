@@ -1,5 +1,5 @@
 /**
- * Supabase `profiles` table row — snake_case matches Postgres columns.
+ * Supabase row types — snake_case matches Postgres columns.
  */
 
 export interface ProfileRow {
@@ -15,8 +15,42 @@ export interface ProfileRow {
   nid_verification_status: string
   risk_profile_status: string
   lenden_id: string | null
+  buying_power_available: number
+  buying_power_reserved: number
   created_at: string
   updated_at: string
+}
+
+export interface TransactionRowDb {
+  id: string
+  user_id: string
+  type: string
+  stock_id: string | null
+  ticker: string | null
+  shares: number | null
+  amount: number
+  status: string
+  note: string | null
+  mock_order_id: string | null
+  created_at: string
+}
+
+export interface SubmitMockBuyRpcResult {
+  orderId: string
+  buyingPowerAfter: number
+  filledShares: number
+  executionPrice: number
+}
+
+export interface SubmitMockBuyRpcArgs {
+  p_stock_id: string
+  p_symbol: string
+  p_side: string
+  p_amount_bdt: number
+  p_fee_bdt: number
+  p_filled_shares: number
+  p_execution_price: number
+  p_ticker: string
 }
 
 export interface Database {
@@ -24,16 +58,24 @@ export interface Database {
     Tables: {
       profiles: {
         Row: ProfileRow
-        Insert: Omit<ProfileRow, 'created_at' | 'updated_at'> & {
-          created_at?: string
-          updated_at?: string
-        }
+        Insert: Partial<ProfileRow> & { id: string }
         Update: Partial<Omit<ProfileRow, 'id'>>
+        Relationships: []
+      }
+      transactions: {
+        Row: TransactionRowDb
+        Insert: Partial<TransactionRowDb>
+        Update: Partial<TransactionRowDb>
         Relationships: []
       }
     }
     Views: Record<string, never>
-    Functions: Record<string, never>
+    Functions: {
+      submit_mock_buy: {
+        Args: SubmitMockBuyRpcArgs
+        Returns: SubmitMockBuyRpcResult
+      }
+    }
     Enums: Record<string, never>
     CompositeTypes: Record<string, never>
   }

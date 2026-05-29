@@ -1,56 +1,71 @@
 import { ChevronRight } from 'lucide-react'
 import { motion } from 'framer-motion'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { formatBDT } from '../data/stocks'
-import {
-  getAllocationBreakdown,
-  getHoldings,
-  getPortfolioHistoryData,
-  getPortfolioSummary,
-} from '../services/portfolioApi'
+import { getPortfolioBundle, type PortfolioBundle } from '../services/portfolioApi'
 import type { PortfolioHistoryPoint } from '../data/portfolio'
 import type { AllocationSegment } from '../data/allocation'
 import { Card, ChangeText } from '../components/ui/Card'
 import { ScreenHeader } from '../components/layout/ScreenHeader'
 import { PortfolioChart } from '../components/charts/PortfolioChart'
-import { PrototypeBanner } from '../components/trust/ComplianceCopy'
+import { PrototypeBanner, PrototypeModeBadge } from '../components/trust/ComplianceCopy'
 import { LoadingSkeleton, TrustState } from '../components/trust/TrustState'
 import { useApp } from '../context/AppContext'
 
 export function PortfolioScreen() {
-  const { openStock, openAllocation } = useApp()
+  const { openStock, openAllocation, isDemo, portfolioVersion, dataRefreshing } = useApp()
   const [scrubbedPoint, setScrubbedPoint] = useState<PortfolioHistoryPoint | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [summary, setSummary] = useState<Awaited<ReturnType<typeof getPortfolioSummary>> | null>(null)
+  const [initialLoad, setInitialLoad] = useState(true)
+  const [summary, setSummary] = useState<PortfolioBundle['summary'] | null>(null)
   const [history, setHistory] = useState<PortfolioHistoryPoint[]>([])
   const [allocation, setAllocation] = useState<AllocationSegment[]>([])
-  const [holdings, setHoldings] = useState<Awaited<ReturnType<typeof getHoldings>>>([])
+  const [holdings, setHoldings] = useState<PortfolioBundle['holdings']>([])
+  const [portfolioError, setPortfolioError] = useState<string | null>(null)
+  const loadSeq = useRef(0)
 
   useEffect(() => {
-    Promise.all([
-      getPortfolioSummary(),
-      getPortfolioHistoryData(),
-      getAllocationBreakdown(),
-      getHoldings(),
-    ]).then(([s, h, a, holdingsData]) => {
-      setSummary(s)
-      setHistory(h)
-      setAllocation(a)
-      setHoldings(holdingsData)
-      setLoading(false)
-    })
-  }, [])
+    const seq = ++loadSeq.current
+
+    getPortfolioBundle()
+      .then((bundle) => {
+        if (seq !== loadSeq.current) return
+
+        setPortfolioError(bundle.error)
+        setSummary(bundle.summary)
+        setHistory(bundle.history)
+        setAllocation(bundle.allocation)
+        setHoldings(bundle.holdings)
+      })
+      .finally(() => {
+        if (seq === loadSeq.current) {
+          setInitialLoad(false)
+        }
+      })
+  }, [portfolioVersion])
 
   const displayedValue = scrubbedPoint?.value ?? summary?.totalValue ?? 0
+  const showInitialSkeleton = initialLoad && !summary
 
   return (
     <>
       <ScreenHeader title="Portfolio" subtitle="Your DSE holdings" large />
       <div className="px-5 pb-4">
         <PrototypeBanner className="mb-4" />
-        {loading || !summary ? (
+        {isDemo && <PrototypeModeBadge className="mb-3" />}
+        {portfolioError && (
+          <TrustState
+            variant="error"
+            title="Portfolio data unavailable"
+            message={portfolioError}
+            className="mb-4"
+          />
+        )}
+        {dataRefreshing && (
+          <p className="mb-3 text-center text-[10px] text-lenden-muted">Refreshing portfolio…</p>
+        )}
+        {showInitialSkeleton ? (
           <LoadingSkeleton rows={5} />
-        ) : (
+        ) : summary ? (
           <>
             <Card className="mb-4 p-5 pb-4">
               <div className="grid grid-cols-2 gap-4">
@@ -145,6 +160,12 @@ export function PortfolioScreen() {
               </div>
             )}
           </>
+        ) : (
+          <TrustState
+            variant="empty"
+            title="Portfolio unavailable"
+            message="We could not load your portfolio summary."
+          />
         )}
       </div>
     </>

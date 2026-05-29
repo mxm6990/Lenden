@@ -2,6 +2,7 @@ import { ChevronRight } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { getLegalConsents } from '../../services/profileApi'
 import { appendAuditLog } from '../../services/auditApi'
+import { getAuthenticatedUserId } from '../../lib/supabaseAuth'
 import type { LegalConsent } from '../../types/profile'
 import { Card } from '../../components/ui/Card'
 import { LegalDocumentModal } from '../../components/trust/LegalDocumentModal'
@@ -46,11 +47,14 @@ export function LegalDocumentsScreen({ onBack }: LegalDocumentsScreenProps) {
   const openDoc = (title: string, type?: string) => {
     setModalTitle(title)
     if (type) {
-      appendAuditLog({
-        action: 'LEGAL_DOCUMENT_VIEWED',
-        actorId: 'usr_mahathir_001',
-        targetId: type,
-      })
+      void (async () => {
+        const actorId = (await getAuthenticatedUserId()) ?? 'usr_demo_001'
+        await appendAuditLog({
+          action: 'LEGAL_DOCUMENT_VIEWED',
+          actorId,
+          targetId: type,
+        })
+      })()
     }
   }
 

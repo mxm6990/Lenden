@@ -10,18 +10,13 @@ interface BuyingPowerCardProps {
 export function BuyingPowerCard({ buyingPower, className = '' }: BuyingPowerCardProps) {
   return (
     <Card className={`p-5 ${className}`}>
-      <p className="text-sm font-medium text-lenden-muted">Buying power</p>
+      <p className="text-sm font-medium text-lenden-muted">Buying Power</p>
       <p className="mt-1 text-3xl font-bold tracking-tight tabular-nums text-white">
         {formatBDT(buyingPower.available)}
       </p>
       <p className="mt-1 text-xs leading-snug text-lenden-muted">
-        Cash in BO account · available for orders
+        Available to invest in this prototype
       </p>
-      {buyingPower.reserved > 0 && (
-        <p className="mt-2 text-[11px] text-lenden-muted">
-          {formatBDT(buyingPower.reserved)} reserved for pending orders
-        </p>
-      )}
     </Card>
   )
 }

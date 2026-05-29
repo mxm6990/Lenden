@@ -6,11 +6,11 @@ import { formatBDT, type Stock } from '../data/stocks'
 import { getDseSummary, getMarketStatus, searchStocks } from '../services/marketApi'
 import { Card, ChangeText } from '../components/ui/Card'
 import { ScreenHeader } from '../components/layout/ScreenHeader'
-import { PrototypeBanner } from '../components/trust/ComplianceCopy'
+import { PrototypeBanner, PrototypeModeBadge } from '../components/trust/ComplianceCopy'
 import { LoadingSkeleton, TrustState } from '../components/trust/TrustState'
 
 export function MarketScreen() {
-  const { openStock } = useApp()
+  const { openStock, isDemo } = useApp()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Stock[]>([])
   const [loading, setLoading] = useState(true)
@@ -49,6 +49,7 @@ export function MarketScreen() {
       <ScreenHeader title="Market" subtitle="Dhaka Stock Exchange" large />
       <div className="px-5 pb-4">
         <PrototypeBanner className="mb-4" />
+        {isDemo && <PrototypeModeBadge className="mb-3" />}
 
         {loading ? (
           <LoadingSkeleton rows={4} />

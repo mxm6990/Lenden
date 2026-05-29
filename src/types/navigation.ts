@@ -1,4 +1,4 @@
-export type AuthScreen = 'splash' | 'signup' | 'kyc'
+export type AuthScreen = 'splash' | 'signup' | 'signin' | 'kyc'
 
 export type MainTab = 'home' | 'market' | 'portfolio' | 'profile'
 // | 'learn' — enable tab in BottomNav + App.tsx in a later live update

@@ -67,11 +67,12 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, email, full_name, profile_initial, lenden_id)
+  insert into public.profiles (id, email, full_name, phone, profile_initial, lenden_id)
   values (
     new.id,
     new.email,
     coalesce(new.raw_user_meta_data ->> 'full_name', ''),
+    nullif(trim(coalesce(new.raw_user_meta_data ->> 'phone', '')), ''),
     upper(left(coalesce(new.raw_user_meta_data ->> 'full_name', 'LU'), 2)),
     'LDN-' || upper(substr(replace(new.id::text, '-', ''), 1, 8))
   )

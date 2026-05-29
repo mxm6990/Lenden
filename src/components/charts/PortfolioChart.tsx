@@ -56,9 +56,15 @@ interface PortfolioChartProps {
   data: PortfolioHistoryPoint[]
   onScrub?: (point: PortfolioHistoryPoint | null) => void
   className?: string
+  emptyMessage?: string
 }
 
-export function PortfolioChart({ data, onScrub, className = '' }: PortfolioChartProps) {
+export function PortfolioChart({
+  data,
+  onScrub,
+  className = '',
+  emptyMessage = 'Your portfolio chart will appear after your first mock investment.',
+}: PortfolioChartProps) {
   const clipId = useId().replace(/:/g, '')
   const plotRef = useRef<HTMLDivElement>(null)
   const [plotWidth, setPlotWidth] = useState(280)
@@ -77,7 +83,28 @@ export function PortfolioChart({ data, onScrub, className = '' }: PortfolioChart
     return () => observer.disconnect()
   }, [])
 
-  const values = data.map((d) => d.value)
+  const chartData = useMemo(() => {
+    if (data.length === 0) return []
+    if (data.length === 1) {
+      return [
+        { ...data[0], label: data[0].label === 'Today' ? 'Start' : data[0].label },
+        { ...data[0], label: 'Today' },
+      ]
+    }
+    return data
+  }, [data])
+
+  if (chartData.length === 0) {
+    return (
+      <div
+        className={`flex min-h-[152px] items-center justify-center rounded-xl border border-dashed border-white/10 px-4 text-center text-[11px] leading-relaxed text-lenden-muted ${className}`}
+      >
+        {emptyMessage}
+      </div>
+    )
+  }
+
+  const values = chartData.map((d) => d.value)
   const dataMin = Math.min(...values)
   const dataMax = Math.max(...values)
   const dataRange = dataMax - dataMin || 1
@@ -100,23 +127,24 @@ export function PortfolioChart({ data, onScrub, className = '' }: PortfolioChart
   const plotInnerWidth = Math.max(plotWidth - PLOT_INSET_X * 2, 1)
 
   const xLabelIndices = useMemo(
-    () => getXLabelIndices(data.length, plotInnerWidth),
-    [data.length, plotInnerWidth],
+    () => getXLabelIndices(chartData.length, plotInnerWidth),
+    [chartData.length, plotInnerWidth],
   )
 
   const getPointCoords = useCallback(
     (index: number) => {
-      const x = PLOT_INSET_X + (index / (data.length - 1)) * plotInnerWidth
-      const rawY = ((plotYMax - data[index].value) / yRange) * PLOT_HEIGHT
+      const denominator = Math.max(chartData.length - 1, 1)
+      const x = PLOT_INSET_X + (index / denominator) * plotInnerWidth
+      const rawY = ((plotYMax - chartData[index].value) / yRange) * PLOT_HEIGHT
       const y = clamp(rawY, 0, PLOT_HEIGHT)
       return { x, y }
     },
-    [data, plotInnerWidth, plotYMax, yRange],
+    [chartData, plotInnerWidth, plotYMax, yRange],
   )
 
   const plotPoints = useMemo(
-    () => data.map((_, i) => getPointCoords(i)),
-    [data, getPointCoords],
+    () => chartData.map((_, i) => getPointCoords(i)),
+    [chartData, getPointCoords],
   )
 
   const updateScrub = useCallback(
@@ -127,12 +155,12 @@ export function PortfolioChart({ data, onScrub, className = '' }: PortfolioChart
       const rect = el.getBoundingClientRect()
       const x = clientX - rect.left - PLOT_INSET_X
       const ratio = clamp(x / plotInnerWidth, 0, 1)
-      const index = Math.round(ratio * (data.length - 1))
+      const index = Math.round(ratio * Math.max(chartData.length - 1, 1))
 
       setActiveIndex(index)
-      onScrub?.(data[index])
+      onScrub?.(chartData[index])
     },
-    [data, onScrub, plotInnerWidth],
+    [chartData, onScrub, plotInnerWidth],
   )
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -161,9 +189,10 @@ export function PortfolioChart({ data, onScrub, className = '' }: PortfolioChart
   const activePoint = activeIndex !== null ? plotPoints[activeIndex] : null
 
   const getXLabelStyle = (index: number): React.CSSProperties => {
-    const pct = (index / (data.length - 1)) * 100
+    const denominator = Math.max(chartData.length - 1, 1)
+    const pct = (index / denominator) * 100
     const isFirst = index === 0
-    const isLast = index === data.length - 1
+    const isLast = index === chartData.length - 1
 
     if (isFirst) {
       return { left: `${pct}%`, transform: 'translateX(0)' }
@@ -284,14 +313,14 @@ export function PortfolioChart({ data, onScrub, className = '' }: PortfolioChart
               const style = getXLabelStyle(index)
               return (
                 <span
-                  key={`${data[index].label}-${index}`}
+                  key={`${chartData[index].label}-${index}`}
                   className="absolute top-0 max-w-[4.5rem] truncate whitespace-nowrap text-lenden-muted"
                   style={{
                     ...style,
                     fontSize: plotWidth < 300 ? 9 : 10,
                   }}
                 >
-                  {data[index].label}
+                  {chartData[index].label}
                 </span>
               )
             })}

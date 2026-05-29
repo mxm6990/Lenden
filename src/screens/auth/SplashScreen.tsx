@@ -31,6 +31,13 @@ export function SplashScreen() {
           <Button fullWidth size="lg" variant="secondary" onClick={enterDemo}>
             Explore Demo
           </Button>
+          <button
+            type="button"
+            onClick={() => goToAuth('signin')}
+            className="w-full py-2 text-center text-sm font-medium text-lenden-mint"
+          >
+            Sign in
+          </button>
         </div>
       </motion.div>
     </div>

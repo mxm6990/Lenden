@@ -1,15 +1,9 @@
 import { ChevronRight, TrendingUp } from 'lucide-react'
 import { motion } from 'framer-motion'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { formatBDT, stocks, type Stock } from '../data/stocks'
-import {
-  getBuyingPower,
-  getHoldings,
-  getPortfolioDayChangeData,
-  getPortfolioHistoryData,
-  getPortfolioSummary,
-} from '../services/portfolioApi'
+import { getPortfolioBundle, type PortfolioBundle } from '../services/portfolioApi'
 import type { PortfolioHistoryPoint } from '../data/portfolio'
 import { DSE_STATUS_STYLES, getDseSummary, getMarketStatus, getStocks } from '../services/marketApi'
 import { Card, ChangeText } from '../components/ui/Card'
@@ -19,46 +13,47 @@ import { PortfolioChart } from '../components/charts/PortfolioChart'
 import { BuyingPowerCard } from '../components/portfolio/BuyingPowerCard'
 import { HoldingRow } from '../components/portfolio/HoldingRow'
 import { PastTransactionsSection } from '../components/portfolio/PastTransactionsSection'
-import { PrototypeBanner } from '../components/trust/ComplianceCopy'
+import { PrototypeBanner, PrototypeModeBadge } from '../components/trust/ComplianceCopy'
 import { LoadingSkeleton, TrustState } from '../components/trust/TrustState'
-import type { BuyingPower } from '../data/portfolio'
 
 export function HomeScreen() {
-  const { watchlist, openStock, startBuy, setTab, user } = useApp()
+  const { watchlist, openStock, startBuy, setTab, user, isDemo, portfolioVersion, dataRefreshing } =
+    useApp()
   const [scrubbedPoint, setScrubbedPoint] = useState<PortfolioHistoryPoint | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [initialLoad, setInitialLoad] = useState(true)
   const [portfolioValue, setPortfolioValue] = useState(0)
   const [portfolioHistory, setPortfolioHistory] = useState<PortfolioHistoryPoint[]>([])
-  const [todayGain, setTodayGain] = useState({ amount: 0, pct: 0 })
-  const [holdings, setHoldings] = useState<Awaited<ReturnType<typeof getHoldings>>>([])
-  const [buyingPower, setBuyingPower] = useState<BuyingPower | null>(null)
+  const [todayGain, setTodayGain] = useState({ amount: 0, pct: 0, sourceLabel: null as string | null })
+  const [holdings, setHoldings] = useState<PortfolioBundle['holdings']>([])
+  const [buyingPower, setBuyingPower] = useState<PortfolioBundle['buyingPower']>(null)
   const [dseValue, setDseValue] = useState(0)
   const [dseChange, setDseChange] = useState({ value: 0, pct: 0 })
   const [marketStatus, setMarketStatus] = useState<Awaited<ReturnType<typeof getMarketStatus>> | null>(null)
   const [watchlistStocks, setWatchlistStocks] = useState<Stock[]>([])
   const [marketUnavailable, setMarketUnavailable] = useState(false)
+  const [portfolioError, setPortfolioError] = useState<string | null>(null)
+  const [buyingPowerError, setBuyingPowerError] = useState<string | null>(null)
+  const loadSeq = useRef(0)
 
   const firstName = user.fullName.trim().split(/\s+/)[0] ?? ''
   const greeting = firstName ? `Good morning, ${firstName}` : 'Good morning'
   const displayedValue = scrubbedPoint?.value ?? portfolioValue
+  const showInitialSkeleton = initialLoad
 
   useEffect(() => {
-    Promise.all([
-      getPortfolioSummary(),
-      getPortfolioHistoryData(),
-      getPortfolioDayChangeData(),
-      getHoldings(),
-      getBuyingPower(),
-      getDseSummary(),
-      getMarketStatus(),
-      getStocks(),
-    ])
-      .then(([summary, history, dayChange, holdingsData, bp, dse, market, allStocks]) => {
-        setPortfolioValue(summary.totalValue)
-        setPortfolioHistory(history)
-        setTodayGain(dayChange)
-        setHoldings(holdingsData)
-        setBuyingPower(bp)
+    const seq = ++loadSeq.current
+
+    Promise.all([getPortfolioBundle(), getDseSummary(), getMarketStatus(), getStocks()])
+      .then(([bundle, dse, market, allStocks]) => {
+        if (seq !== loadSeq.current) return
+
+        setPortfolioError(bundle.error)
+        setBuyingPowerError(bundle.buyingPowerError)
+        setPortfolioValue(bundle.summary.totalValue)
+        setPortfolioHistory(bundle.history)
+        setTodayGain(bundle.dayChange)
+        setHoldings(bundle.holdings)
+        setBuyingPower(bundle.buyingPower)
         setMarketStatus(market)
         setMarketUnavailable(market.unavailable)
         if (dse) {
@@ -71,13 +66,18 @@ export function HomeScreen() {
             .filter((s): s is Stock => Boolean(s)),
         )
       })
-      .finally(() => setLoading(false))
-  }, [watchlist])
+      .finally(() => {
+        if (seq === loadSeq.current) {
+          setInitialLoad(false)
+        }
+      })
+  }, [watchlist, portfolioVersion])
 
   return (
     <div className="px-5 pt-14 pb-4">
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
         <PrototypeBanner className="mb-4" />
+        {isDemo && <PrototypeModeBadge className="mb-3" />}
         <div className="mb-1 flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-lg font-medium text-lenden-muted">{greeting}</p>
@@ -86,10 +86,21 @@ export function HomeScreen() {
           <LendenLogo lockup="englishDark" className="shrink-0" />
         </div>
 
-        {loading ? (
+        {showInitialSkeleton ? (
           <LoadingSkeleton rows={4} className="mt-5" />
         ) : (
           <>
+            {dataRefreshing && (
+              <p className="mt-3 text-center text-[10px] text-lenden-muted">Refreshing portfolio…</p>
+            )}
+            {portfolioError && (
+              <TrustState
+                variant="error"
+                title="Portfolio data unavailable"
+                message={portfolioError}
+                className="mt-4"
+              />
+            )}
             <Card className="mt-5 p-5 pb-4">
               <p className="text-sm font-medium text-lenden-muted">
                 {scrubbedPoint ? scrubbedPoint.label : 'Portfolio value'}
@@ -104,8 +115,12 @@ export function HomeScreen() {
                     +{formatBDT(todayGain.amount)} today
                   </span>
                   <span className="text-sm tabular-nums text-lenden-muted">
-                    +{todayGain.pct.toFixed(2)}%
+                    {todayGain.pct >= 0 ? '+' : ''}
+                    {todayGain.pct.toFixed(2)}%
                   </span>
+                  {todayGain.sourceLabel && (
+                    <span className="text-[10px] text-lenden-muted">{todayGain.sourceLabel}</span>
+                  )}
                 </div>
               )}
               <div className="mt-5">
@@ -119,7 +134,10 @@ export function HomeScreen() {
               <TrustState
                 variant="warning"
                 title="Buying power unavailable"
-                message="We could not load your BO account cash balance right now."
+                message={
+                  buyingPowerError ??
+                  'We could not load your BO account cash balance right now.'
+                }
                 className="mt-4"
               />
             )}
