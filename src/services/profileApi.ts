@@ -19,6 +19,9 @@ import type {
   UpdateUserProfilePayload,
   UserProfile,
 } from '../types/profile'
+import type { ProfileRow } from '../types/supabase'
+import { mapProfileRowToUserProfile, mapUserProfileToRowUpdate } from '../lib/profileMapper'
+import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabase'
 
 const MOCK_DELAY_MS = 120
 
@@ -182,11 +185,59 @@ const mockCompliance: ComplianceStatus = {
 
 let supportTickets: SupportTicket[] = []
 
+async function fetchUserProfileFromSupabase(): Promise<UserProfile | null> {
+  if (!isSupabaseConfigured()) return null
+
+  const supabase = getSupabaseClient()
+  if (!supabase) return null
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
+
+  if (authError || !user) return null
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  if (error || !data) return null
+
+  return mapProfileRowToUserProfile(data as ProfileRow)
+}
+
 export async function getUserProfile(): Promise<UserProfile> {
+  const remote = await fetchUserProfileFromSupabase()
+  if (remote) return remote
   return delay({ ...mockUser })
 }
 
 export async function updateUserProfile(payload: UpdateUserProfilePayload): Promise<UserProfile> {
+  if (isSupabaseConfigured()) {
+    const supabase = getSupabaseClient()
+    if (supabase) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (user) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .update(mapUserProfileToRowUpdate(payload))
+          .eq('id', user.id)
+          .select('*')
+          .maybeSingle()
+
+        if (!error && data) {
+          return mapProfileRowToUserProfile(data as ProfileRow)
+        }
+      }
+    }
+  }
+
   Object.assign(mockUser, payload, { updatedAt: new Date().toISOString() })
   if (payload.fullName) {
     mockUser.profileInitial = payload.fullName

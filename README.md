@@ -89,4 +89,12 @@ npm run sync-branding
 
 ## Stack
 
-React · TypeScript · Tailwind CSS · Framer Motion · lucide-react · Capacitor (iOS)
+React · TypeScript · Tailwind CSS · Framer Motion · lucide-react · Capacitor (iOS) · Supabase (optional backend)
+
+## Supabase (optional)
+
+1. Copy `.env.example` → `.env.local` and add your project URL + anon key  
+2. Run `supabase/migrations/001_profiles.sql` in the Supabase SQL Editor  
+3. See `supabase/README.md` for full setup  
+
+Without `.env.local`, the app uses mock data. With Supabase configured but no auth session, profile still uses mock data until **Option B (Auth)** is wired.
