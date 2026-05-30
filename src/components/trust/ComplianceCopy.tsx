@@ -24,6 +24,7 @@ export const COMPLIANCE_COPY = {
 const BADGE_STYLES: Record<MarketDataBadgeLabel, string> = {
   'Prototype Data': 'border-white/15 bg-white/5 text-lenden-muted',
   'Experimental Feed': 'border-amber-400/35 bg-amber-500/10 text-amber-200',
+  'Experimental DSE Feed': 'border-amber-400/35 bg-amber-500/10 text-amber-200',
   'Licensed Feed': 'border-lenden-mint/35 bg-lenden-mint/10 text-lenden-mint',
   'Delayed Data': 'border-sky-400/30 bg-sky-500/10 text-sky-200',
   'Data Unavailable': 'border-red-500/25 bg-red-500/10 text-red-300',

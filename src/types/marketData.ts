@@ -3,6 +3,7 @@ export type MarketDataMode = 'mock' | 'experimental_dse' | 'licensed'
 export type MarketDataBadgeLabel =
   | 'Prototype Data'
   | 'Experimental Feed'
+  | 'Experimental DSE Feed'
   | 'Licensed Feed'
   | 'Delayed Data'
   | 'Data Unavailable'
@@ -47,8 +48,13 @@ export interface MarketDataStatus {
   configurationError: string | null
   lastRefreshAt: string | null
   fellBackToMock: boolean
+  fellBackToCache?: boolean
+  sourceUnavailable?: boolean
   quoteCount: number
 }
 
 export const MARKET_DATA_DISCLAIMER =
   'Market data shown for prototype demonstration unless connected to a licensed provider.' as const
+
+export const EXPERIMENTAL_DSE_DISCLAIMER =
+  'Experimental DSE data for paper trading only. Verify licensing before production use.' as const

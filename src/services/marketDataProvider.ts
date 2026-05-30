@@ -7,6 +7,7 @@
 
 import { getStock, stocks, type Stock } from '../data/stocks'
 import { buildMockMarketQuote, buildMockMarketQuotes } from '../data/mockMarketQuotes'
+import { isSupabaseConfigured } from '../lib/supabase'
 import type {
   MarketDataBadgeLabel,
   MarketDataMode,
@@ -14,7 +15,7 @@ import type {
   MarketQuote,
   StockQuote,
 } from '../types/marketData'
-import { MARKET_DATA_DISCLAIMER } from '../types/marketData'
+import { EXPERIMENTAL_DSE_DISCLAIMER, MARKET_DATA_DISCLAIMER } from '../types/marketData'
 
 const REFRESH_TTL_MS = 60_000
 
@@ -76,6 +77,38 @@ function setCache(quotes: MarketQuote[], status: Partial<MarketDataStatus>) {
     lastRefreshAt: new Date(lastRefreshAt).toISOString(),
     quoteCount: quotes.length,
   }
+  logExperimentalDseQuoteAudit(quotes, lastStatus)
+}
+
+function logExperimentalDseQuoteAudit(quotes: MarketQuote[], status: MarketDataStatus) {
+  if (!import.meta.env.DEV) return
+  if (status.mode !== 'experimental_dse') return
+
+  console.group('Experimental DSE Quote Audit')
+  console.log('status:', {
+    badge: status.badge,
+    sourceLabel: status.sourceLabel,
+    isMock: status.isMock,
+    fellBackToMock: status.fellBackToMock,
+    fellBackToCache: status.fellBackToCache,
+    sourceUnavailable: status.sourceUnavailable,
+    configurationError: status.configurationError,
+  })
+
+  for (const quote of quotes) {
+    console.log({
+      stockId: quote.stockId,
+      ticker: quote.ticker,
+      lastPrice: quote.lastPrice,
+      source: quote.source,
+      sourceLabel: quote.sourceLabel,
+      isLive: quote.isLive,
+      isDelayed: quote.isDelayed,
+      isMock: quote.isMock,
+    })
+  }
+
+  console.groupEnd()
 }
 
 function resolveStockIdFromTicker(ticker: string): string | null {
@@ -201,24 +234,104 @@ function mergeWithMockFallback(remoteQuotes: MarketQuote[]): MarketQuote[] {
   return merged.map((mockQuote) => remoteById.get(mockQuote.stockId) ?? mockQuote)
 }
 
+function readProxyUrl(): string | null {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim().replace(/\/$/, '')
+  if (!supabaseUrl) return null
+  return `${supabaseUrl}/functions/v1/dse-market-data`
+}
+
+interface ProxyMarketDataResponse {
+  quotes: MarketQuote[]
+  status: {
+    mode?: string
+    badge?: string
+    sourceLabel?: string
+    disclaimer?: string
+    isMock?: boolean
+    isLive?: boolean
+    isDelayed?: boolean
+    fellBackToMock?: boolean
+    fellBackToCache?: boolean
+    sourceUnavailable?: boolean
+    configurationError?: string | null
+    lastRefreshAt?: string
+    quoteCount?: number
+  }
+}
+
+function mapProxyBadge(badge: string | undefined): MarketDataBadgeLabel {
+  if (badge === 'Experimental DSE Feed') return 'Experimental DSE Feed'
+  if (badge === 'Experimental Feed') return 'Experimental Feed'
+  if (badge === 'Licensed Feed') return 'Licensed Feed'
+  if (badge === 'Delayed Data') return 'Delayed Data'
+  if (badge === 'Data Unavailable') return 'Data Unavailable'
+  return 'Prototype Data'
+}
+
+function mapProxyStatus(
+  proxyStatus: ProxyMarketDataResponse['status'],
+  mode: MarketDataMode,
+  quoteCount: number,
+): Partial<MarketDataStatus> {
+  return {
+    mode,
+    badge: mapProxyBadge(proxyStatus.badge),
+    sourceLabel: proxyStatus.sourceLabel ?? 'Prototype Data',
+    disclaimer: proxyStatus.disclaimer ?? EXPERIMENTAL_DSE_DISCLAIMER,
+    isMock: proxyStatus.isMock ?? true,
+    isLive: proxyStatus.isLive ?? false,
+    isDelayed: proxyStatus.isDelayed ?? true,
+    configurationError: proxyStatus.configurationError ?? null,
+    lastRefreshAt: proxyStatus.lastRefreshAt ?? new Date().toISOString(),
+    fellBackToMock: proxyStatus.fellBackToMock ?? false,
+    fellBackToCache: proxyStatus.fellBackToCache ?? false,
+    sourceUnavailable: proxyStatus.sourceUnavailable ?? false,
+    quoteCount,
+  }
+}
+
 /**
  * Experimental DSE adapter for local testing only. Confirm licensing before production use.
+ * Calls Supabase Edge Function proxy — never the upstream DSE host from the browser.
  */
-async function fetchExperimentalQuotes(endpoint: string): Promise<MarketQuote[]> {
-  const remote = await fetchRemoteQuotes(endpoint, { Accept: 'application/json' }, {
-    source: 'experimental_dse',
-    sourceLabel: 'Experimental Feed',
-    isLive: false,
-    isDelayed: true,
-    isMock: false,
-    disclaimer: MARKET_DATA_DISCLAIMER,
-  })
+async function fetchExperimentalQuotesViaProxy(stockId?: string): Promise<{
+  quotes: MarketQuote[]
+  status: Partial<MarketDataStatus>
+}> {
+  const proxyUrl = readProxyUrl()
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim()
 
-  if (remote.length === 0) {
-    throw new Error('Experimental feed returned no valid quotes')
+  if (!proxyUrl || !anonKey) {
+    throw new Error('Supabase proxy is not configured for experimental DSE market data.')
   }
 
-  return mergeWithMockFallback(remote)
+  const url = new URL(proxyUrl)
+  if (stockId) url.searchParams.set('stockId', stockId)
+
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    apikey: anonKey,
+  }
+
+  // Legacy anon JWT keys require Authorization; publishable keys may not be JWT-shaped.
+  if (anonKey.startsWith('eyJ')) {
+    headers.Authorization = `Bearer ${anonKey}`
+  }
+
+  const response = await fetch(url.toString(), { headers })
+
+  if (!response.ok) {
+    throw new Error(`Experimental DSE proxy failed (${response.status}).`)
+  }
+
+  const payload = (await response.json()) as ProxyMarketDataResponse
+  const remoteQuotes = Array.isArray(payload.quotes) ? payload.quotes : []
+  const quotes = remoteQuotes.length > 0 ? mergeWithMockFallback(remoteQuotes) : buildMockMarketQuotes()
+
+  return {
+    quotes,
+    status: mapProxyStatus(payload.status ?? {}, 'experimental_dse', quotes.length),
+  }
 }
 
 async function fetchLicensedQuotes(endpoint: string, apiKey: string): Promise<MarketQuote[]> {
@@ -282,7 +395,11 @@ export function getCachedMarketQuote(stockId: string): MarketQuote | null {
 }
 
 export async function getMarketQuote(stockId: string): Promise<MarketQuote | null> {
-  await refreshMarketQuotes()
+  if (readEnvMode() === 'experimental_dse' && isSupabaseConfigured()) {
+    await refreshMarketQuotes(false, stockId)
+  } else {
+    await refreshMarketQuotes()
+  }
   return getCachedMarketQuote(stockId)
 }
 
@@ -293,11 +410,11 @@ export async function getMarketQuotes(): Promise<MarketQuote[]> {
     .filter((quote): quote is MarketQuote => quote !== null)
 }
 
-export async function refreshMarketQuotes(force = false): Promise<MarketQuote[]> {
+export async function refreshMarketQuotes(force = false, stockId?: string): Promise<MarketQuote[]> {
   if (!force && refreshPromise) return refreshPromise
 
   const stale = Date.now() - lastRefreshAt > REFRESH_TTL_MS
-  if (!force && quoteCache.size > 0 && !stale) {
+  if (!force && quoteCache.size > 0 && !stale && !stockId) {
     return Array.from(quoteCache.values())
   }
 
@@ -367,18 +484,20 @@ export async function refreshMarketQuotes(force = false): Promise<MarketQuote[]>
       }
     }
 
-    if (!endpoint) {
+    if (!isSupabaseConfigured()) {
       const quotes = buildMockMarketQuotes()
       setCache(quotes, {
         mode: 'experimental_dse',
         badge: 'Prototype Data',
         sourceLabel: 'Prototype Data',
-        disclaimer: MARKET_DATA_DISCLAIMER,
+        disclaimer: EXPERIMENTAL_DSE_DISCLAIMER,
         isMock: true,
         isLive: false,
         isDelayed: true,
-        configurationError: null,
+        configurationError:
+          'Experimental DSE mode requires Supabase configuration. Upstream data is proxied server-side only.',
         fellBackToMock: true,
+        sourceUnavailable: true,
         quoteCount: quotes.length,
         lastRefreshAt: new Date().toISOString(),
       })
@@ -386,20 +505,8 @@ export async function refreshMarketQuotes(force = false): Promise<MarketQuote[]>
     }
 
     try {
-      const quotes = await fetchExperimentalQuotes(endpoint)
-      setCache(quotes, {
-        mode: 'experimental_dse',
-        badge: 'Experimental Feed',
-        sourceLabel: 'Experimental Feed',
-        disclaimer: MARKET_DATA_DISCLAIMER,
-        isMock: false,
-        isLive: false,
-        isDelayed: true,
-        configurationError: null,
-        fellBackToMock: false,
-        quoteCount: quotes.length,
-        lastRefreshAt: new Date().toISOString(),
-      })
+      const { quotes, status } = await fetchExperimentalQuotesViaProxy(stockId)
+      setCache(quotes, status)
       return quotes
     } catch {
       const quotes = buildMockMarketQuotes()
@@ -407,12 +514,13 @@ export async function refreshMarketQuotes(force = false): Promise<MarketQuote[]>
         mode: 'experimental_dse',
         badge: 'Prototype Data',
         sourceLabel: 'Prototype Data',
-        disclaimer: MARKET_DATA_DISCLAIMER,
+        disclaimer: EXPERIMENTAL_DSE_DISCLAIMER,
         isMock: true,
         isLive: false,
         isDelayed: true,
-        configurationError: 'Experimental feed request failed. Showing prototype data.',
+        configurationError: 'Experimental DSE proxy unavailable. Showing prototype mock quotes.',
         fellBackToMock: true,
+        sourceUnavailable: true,
         quoteCount: quotes.length,
         lastRefreshAt: new Date().toISOString(),
       })

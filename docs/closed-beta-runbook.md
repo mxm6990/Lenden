@@ -28,9 +28,15 @@ Optional for closed beta testing:
 | Variable | Purpose |
 |----------|---------|
 | `VITE_FORCE_DSE_MARKET_OPEN=true` | Treat DSE as open outside trading hours (dev builds only) |
-| `VITE_MARKET_DATA_MODE=mock` | Default prototype quotes (recommended for beta) |
-| `VITE_DSE_MARKET_DATA_ENDPOINT=` | Leave empty unless testing experimental feed |
-| `VITE_DSE_MARKET_DATA_API_KEY=` | Licensed/experimental feed key — never commit |
+| `VITE_MARKET_DATA_MODE=mock` | Default prototype quotes (recommended for most beta testers) |
+| `VITE_MARKET_DATA_MODE=experimental_dse` | Use Supabase Edge Function proxy for unofficial DSE quotes |
+| `VITE_DSE_MARKET_DATA_ENDPOINT=` | Licensed-mode vendor URL only — **not** used for experimental DSE |
+
+**Important:** The React app never calls unofficial DSE hosts directly. Experimental mode calls:
+
+`{VITE_SUPABASE_URL}/functions/v1/dse-market-data`
+
+Upstream configuration lives in Supabase Edge Function secrets (see §2b below).
 
 Verify:
 
@@ -41,7 +47,7 @@ npm run beta:check
 
 ---
 
-## 2. Required Supabase migrations (001–005)
+## 2. Required Supabase migrations (001–006)
 
 Run each file in **Supabase Dashboard → SQL Editor**, in order:
 
@@ -52,8 +58,86 @@ Run each file in **Supabase Dashboard → SQL Editor**, in order:
 | 003 | `supabase/migrations/003_persistent_investing.sql` | Holdings, transactions, buying power, watchlists, audit |
 | 004 | `supabase/migrations/004_schema_integrity_and_atomic_mock_buy.sql` | `submit_mock_buy` RPC |
 | 005 | `supabase/migrations/005_submit_mock_sell.sql` | `submit_mock_sell` RPC + realized P&L |
+| 006 | `supabase/migrations/006_market_quotes_cache.sql` | Server cache for experimental DSE proxy fallback |
 
 See `supabase/README.md` for verification queries.
+
+---
+
+## 2b. Experimental DSE market data (optional, closed beta only)
+
+**Unofficial source:** community API style from [ShanjinurIslam/Dhaka-Stock-Exchange](https://github.com/ShanjinurIslam/Dhaka-Stock-Exchange).
+
+> **Warning:** This is **not** licensed DSE market data. Use for paper-trading prototype evaluation only. Self-host or deploy your own instance — do **not** rely on deprecated public hosts in production.
+
+### Deploy the upstream DSE API (Render)
+
+LenDen ships a Mongo-free compatible adapter at `services/dse-experimental-api/` (same routes as [Dhaka-Stock-Exchange](https://github.com/ShanjinurIslam/Dhaka-Stock-Exchange)).
+
+1. Push repo to GitHub
+2. Render → **New** → **Blueprint** → select LenDen repo
+3. Confirm service `lenden-dse-experimental-api` deploys from `services/dse-experimental-api/render.yaml`
+4. Copy URL, e.g. `https://lenden-dse-experimental-api.onrender.com`
+5. Smoke test:
+
+```bash
+npm run dse:smoke -- https://YOUR-SERVICE.onrender.com
+```
+
+Expected: `/api/latest_price` returns `{ date, stocks[] }` and `/api/share_price?name=GP` returns a GP row.
+
+> **Unofficial source only.** Not licensed DSE data. Beta / paper trading prototype.
+
+### Server-side secrets (Supabase Dashboard → Edge Functions → Secrets)
+
+| Secret | Example | Purpose |
+|--------|---------|---------|
+| `DSE_EXPERIMENTAL_BASE_URL` | `https://your-self-hosted-dse-api.example.com` | Base URL of your deployed Dhaka-Stock-Exchange API |
+| `DSE_MARKET_DATA_MODE` | `experimental_dse` | Enables upstream fetch in the proxy |
+
+**Do not** put `DSE_EXPERIMENTAL_BASE_URL` in `.env.local` or frontend code.
+
+### Deploy the proxy function
+
+```bash
+supabase functions deploy dse-market-data
+```
+
+Or run:
+
+```bash
+chmod +x scripts/configure-dse-proxy.sh
+./scripts/configure-dse-proxy.sh https://YOUR-SERVICE.onrender.com fnxpdpxbiinnddftysqq
+node scripts/verify-experimental-dse.mjs https://YOUR-SERVICE.onrender.com
+```
+
+`supabase/config.toml` sets `verify_jwt = false` on `dse-market-data` so publishable anon keys work with the `apikey` header.
+
+### Upstream routes used by the proxy
+
+| Route | Purpose |
+|-------|---------|
+| `GET /api/latest_price` | Bulk latest quotes (primary) |
+| `GET /api/share_price?name=GP` | Single ticker refresh (`stockId` query on proxy) |
+| `GET /api/company_list` | Not used by Lenden v1 |
+| `GET /api/company_details?name=GP` | Not used by Lenden v1 |
+| `GET /api/company_data?name=GP&type=price&duration=24` | Not used by Lenden v1 |
+
+### Frontend toggle (after proxy is deployed)
+
+```env
+VITE_MARKET_DATA_MODE=experimental_dse
+```
+
+Restart `npm run dev`. UI shows **Experimental DSE Feed** badge and disclaimer:
+
+> Experimental DSE data for paper trading only. Verify licensing before production use.
+
+### Fallback behavior
+
+1. Proxy calls upstream `/api/latest_price`
+2. On failure → reads `market_quotes_cache` if younger than 5 minutes
+3. On cache miss → returns prototype mock quotes with `sourceUnavailable` status
 
 ---
 
@@ -179,7 +263,7 @@ In-app: Home / Portfolio should refresh after buy/sell; Past transactions sectio
 | Demo mode | Buy/sell receipts work; portfolio holdings stay on static mocks |
 | Market hours | Orders blocked when DSE closed unless dev override |
 | Market data | Default `mock` mode — not licensed live DSE feed |
-| Experimental feed | Requires your own endpoint; falls back to mock if missing/failing |
+| Experimental DSE feed | Unofficial community API via Supabase proxy only; not licensed; falls back to cache/mock |
 | KYC / linked accounts | Simulated UI only |
 | Learn tab | Disabled in this build |
 | Email confirmation | Can block sign-in if enabled in Supabase |
@@ -188,8 +272,9 @@ In-app: Home / Portfolio should refresh after buy/sell; Past transactions sectio
 
 ## 9. Pre-invite checklist
 
-- [ ] Migrations 001–005 applied
+- [ ] Migrations 001–006 applied
 - [ ] `.env.local` configured; `npm run beta:check` passes
+- [ ] If using experimental DSE: `dse-market-data` function deployed + secrets set
 - [ ] One operator dry-run via `docs/alpha-test-script.md`
 - [ ] Testers received `docs/tester-feedback-form.md`
 - [ ] Testers told: mock trading, no real money, closed beta prototype

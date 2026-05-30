@@ -1,0 +1,4 @@
+# Supabase local/dev configuration for LenDen Edge Functions
+
+[functions.dse-market-data]
+verify_jwt = false

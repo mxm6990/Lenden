@@ -78,6 +78,34 @@ Run:
 
 This adds `transactions.realized_gain_loss` and the `submit_mock_sell` RPC for atomic mock sells with realized gain/loss tracking.
 
+## 12. Experimental DSE market data proxy (closed beta)
+
+Run:
+
+`migrations/006_market_quotes_cache.sql`
+
+Deploy Edge Function:
+
+`functions/dse-market-data`
+
+`supabase/config.toml` sets `verify_jwt = false` so the function accepts Supabase **publishable** anon keys via the `apikey` header (no JWT required).
+
+Set secrets:
+
+- `DSE_EXPERIMENTAL_BASE_URL` — Render URL for `services/dse-experimental-api`
+- `DSE_MARKET_DATA_MODE=experimental_dse`
+
+Or:
+
+```bash
+./scripts/configure-dse-proxy.sh https://YOUR-SERVICE.onrender.com YOUR_PROJECT_REF
+node scripts/verify-experimental-dse.mjs https://YOUR-SERVICE.onrender.com
+```
+
+Frontend: `VITE_MARKET_DATA_MODE=experimental_dse` (calls the proxy at `/functions/v1/dse-market-data`).
+
+**Unofficial data only.** Not licensed DSE feed. Beta / paper trading prototype — verify licensing before production.
+
 ## 11. Optional demo row (manual)
 
 Only after you create a user in **Authentication → Users**, insert a matching profile:
