@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { formatBDT, stocks, type Stock } from '../data/stocks'
+import { matchesStockId } from '../lib/securityListing'
 import { getPortfolioBundle, type PortfolioBundle } from '../services/portfolioApi'
 import type { PortfolioHistoryPoint } from '../data/portfolio'
 import { DSE_STATUS_STYLES, getDseSummary, getMarketStatus, getStocks } from '../services/marketApi'
@@ -62,7 +63,7 @@ export function HomeScreen() {
         }
         setWatchlistStocks(
           watchlist
-            .map((id) => allStocks.find((s) => s.id === id))
+            .map((id) => allStocks.find((s) => matchesStockId(s.id, id)))
             .filter((s): s is Stock => Boolean(s)),
         )
       })
@@ -251,7 +252,7 @@ export function HomeScreen() {
                   <p className="text-sm font-semibold text-white">Ready to invest?</p>
                   <p className="text-xs text-lenden-muted">Start with ৳500 in top DSE picks</p>
                 </div>
-                <Button size="sm" className="shrink-0" onClick={() => startBuy(stocks[0].id)}>
+                <Button size="sm" className="shrink-0" onClick={() => startBuy(stocks[0].ticker)}>
                   Buy
                   <ChevronRight className="h-4 w-4" />
                 </Button>

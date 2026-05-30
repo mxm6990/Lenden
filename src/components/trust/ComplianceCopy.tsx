@@ -4,6 +4,7 @@
  */
 
 import { getMarketDataStatus, isExperimentalMarketDataMode } from '../../services/marketDataProvider'
+import { getSecurityCatalogSource, getSecurityCount } from '../../services/securityCatalogApi'
 import { MARKET_DATA_DISCLAIMER, type MarketDataBadgeLabel } from '../../types/marketData'
 
 export const COMPLIANCE_COPY = {
@@ -99,6 +100,39 @@ export function MarketDataNotice({ className = '' }: { className?: string }) {
       {status.configurationError && (
         <p className="mt-1 text-[10px] leading-relaxed text-amber-200/90">{status.configurationError}</p>
       )}
+    </div>
+  )
+}
+
+export function MarketStatisticsBanner({
+  count,
+  className = '',
+}: {
+  count?: number
+  className?: string
+}) {
+  const status = getMarketDataStatus()
+  const securitiesCount = count ?? getSecurityCount()
+  const catalogSource = getSecurityCatalogSource()
+
+  return (
+    <div
+      className={`rounded-xl border border-white/10 bg-lenden-surface/80 px-3 py-2.5 ${className}`}
+    >
+      <p className="text-xs font-semibold text-white">
+        DSE Securities Available: {securitiesCount.toLocaleString()}
+      </p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <MarketDataBadge label={status.badge} />
+        {catalogSource === 'supabase' && (
+          <span className="inline-flex items-center rounded-full border border-sky-400/30 bg-sky-500/10 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-sky-200 uppercase">
+            Securities Master
+          </span>
+        )}
+      </div>
+      <p className="mt-2 text-[10px] leading-relaxed text-lenden-muted">
+        Market data source: {status.sourceLabel}. {COMPLIANCE_COPY.mockTrading}
+      </p>
     </div>
   )
 }

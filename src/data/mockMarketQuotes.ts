@@ -32,5 +32,11 @@ export function buildMockMarketQuotes(): MarketQuote[] {
 }
 
 export function buildMockMarketQuote(stockId: string): MarketQuote | null {
-  return buildMockMarketQuotes().find((quote) => quote.stockId === stockId) ?? null
+  const quotes = buildMockMarketQuotes()
+  const normalized = stockId.trim().toUpperCase()
+  return (
+    quotes.find((quote) => quote.stockId === stockId) ??
+    quotes.find((quote) => quote.ticker.toUpperCase() === normalized) ??
+    null
+  )
 }

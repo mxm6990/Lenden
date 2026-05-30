@@ -6,6 +6,7 @@ import type { UserPosition } from '../types/position'
 import { getPortfolioBundle } from './portfolioApi'
 import { getCachedMarketQuote } from './marketDataProvider'
 import type { EnrichedHolding } from '../data/stocks'
+import { matchesStockId } from '../lib/securityListing'
 
 const MOCK_USER_ID = 'usr_demo_001'
 const MOCK_DELAY_MS = 80
@@ -50,7 +51,7 @@ function buildPositionFromHolding(
 
 export async function fetchUserPosition(stockId: string): Promise<UserPosition | null> {
   const bundle = await getPortfolioBundle()
-  const holding = bundle.holdings.find((h) => h.stockId === stockId)
+  const holding = bundle.holdings.find((h) => matchesStockId(h.stockId, stockId))
   if (!holding) return delay(null)
   return delay(buildPositionFromHolding(holding, bundle.summary.totalValue, MOCK_USER_ID))
 }

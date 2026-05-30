@@ -5,7 +5,8 @@
  */
 
 import { getDSEMarketInfo } from '../data/dseMarket'
-import { getStock } from '../data/stocks'
+import type { Stock } from '../data/stocks'
+import { canonicalStockId, matchesStockId, resolveStockSync } from '../lib/securityListing'
 import { calculateBuyingPowerAfterOrder } from '../lib/portfolioCalculations'
 import { isDemoModeActive } from '../lib/demoMode'
 import { getAuthenticatedUserId } from '../lib/supabaseAuth'
@@ -156,7 +157,7 @@ async function fetchBuyingPowerAvailable(userId: string): Promise<number> {
 
 function buildReceipt(params: {
   orderId: string
-  stock: NonNullable<ReturnType<typeof getStock>>
+  stock: Stock
   orderInput: SubmitOrderRequest
   feeBdt: number
   filledShares: number
@@ -184,7 +185,7 @@ function buildReceipt(params: {
 async function submitMockBuyViaRpc(
   userId: string,
   orderInput: SubmitOrderRequest,
-  stock: NonNullable<ReturnType<typeof getStock>>,
+  stock: Stock,
 ): Promise<{ order: SubmitOrderResponse; receipt: MockOrderReceipt }> {
   const supabase = getSupabaseClient()
   if (!supabase) throw new Error('Supabase client unavailable')
@@ -210,7 +211,7 @@ async function submitMockBuyViaRpc(
   console.log('path: submit_mock_buy RPC')
 
   const { data, error } = await supabase.rpc('submit_mock_buy', {
-    p_stock_id: orderInput.stockId,
+    p_stock_id: canonicalStockId(stock),
     p_symbol: stock.ticker,
     p_side: orderInput.side,
     p_amount_bdt: orderInput.amountBdt,
@@ -255,7 +256,7 @@ async function submitMockBuyViaRpc(
 
 async function submitDemoMockOrder(
   orderInput: SubmitOrderRequest,
-  stock: NonNullable<ReturnType<typeof getStock>>,
+  stock: Stock,
 ): Promise<{ order: SubmitOrderResponse; receipt: MockOrderReceipt }> {
   const feeBdt = computeOrderFee(orderInput.amountBdt)
   const filledShares = computeFilledShares(orderInput.amountBdt, getStockPrice(stock.id))
@@ -316,7 +317,7 @@ async function submitDemoMockOrder(
 
 function buildSellReceipt(params: {
   orderId: string
-  stock: NonNullable<ReturnType<typeof getStock>>
+  stock: Stock
   shares: number
   executionPrice: number
   grossProceeds: number
@@ -352,7 +353,7 @@ async function submitMockSellViaRpc(
   userId: string,
   stockId: string,
   shares: number,
-  stock: NonNullable<ReturnType<typeof getStock>>,
+  stock: Stock,
 ): Promise<{ order: SubmitOrderResponse; receipt: MockOrderReceipt }> {
   const supabase = getSupabaseClient()
   if (!supabase) throw new Error('Supabase client unavailable')
@@ -372,7 +373,7 @@ async function submitMockSellViaRpc(
   console.log('path: submit_mock_sell RPC')
 
   const { data, error } = await supabase.rpc('submit_mock_sell', {
-    p_stock_id: stockId,
+    p_stock_id: canonicalStockId(stock),
     p_symbol: stock.ticker,
     p_ticker: stock.ticker,
     p_shares: shares,
@@ -419,7 +420,7 @@ async function submitMockSellViaRpc(
 async function submitDemoMockSell(
   stockId: string,
   shares: number,
-  stock: NonNullable<ReturnType<typeof getStock>>,
+  stock: Stock,
   avgCost: number,
 ): Promise<{ order: SubmitOrderResponse; receipt: MockOrderReceipt }> {
   const executionPrice = getStockPrice(stock.id)
@@ -484,7 +485,7 @@ export async function previewSellOrder(
 
   await refreshMarketQuotes()
 
-  const stock = getStock(stockId)
+  const stock = resolveStockSync(stockId)
   if (!stock) return delay({ ok: false, reason: 'preview_failed' })
 
   const market = getDSEMarketInfo()
@@ -509,7 +510,7 @@ export async function previewSellOrder(
     })
   }
 
-  const holding = holdingsResult.data.find((h) => h.stockId === stockId)
+  const holding = holdingsResult.data.find((h) => matchesStockId(h.stockId, stockId))
   if (!holding) {
     return delay({
       ok: false,
@@ -581,7 +582,7 @@ export async function submitMockSell(
 
   await refreshMarketQuotes()
 
-  const stock = getStock(stockId)
+  const stock = resolveStockSync(stockId)
   if (!stock) return delay({ ok: false, reason: 'order_rejected' })
 
   const market = getDSEMarketInfo()
@@ -602,7 +603,7 @@ export async function submitMockSell(
     return delay({ ok: false, reason: 'persist_failed', errorMessage: holdingsResult.error })
   }
 
-  const holding = holdingsResult.data.find((h) => h.stockId === stockId)
+  const holding = holdingsResult.data.find((h) => matchesStockId(h.stockId, stockId))
   if (!holding || shares > holding.shares) {
     return delay({
       ok: false,
@@ -684,7 +685,7 @@ export async function previewOrder(
 
   await refreshMarketQuotes()
 
-  const stock = getStock(orderInput.stockId)
+  const stock = resolveStockSync(orderInput.stockId)
   if (!stock) return delay({ ok: false, reason: 'preview_failed' })
 
   const market = getDSEMarketInfo()
@@ -761,7 +762,7 @@ export async function submitMockOrder(
 
   await refreshMarketQuotes()
 
-  const stock = getStock(orderInput.stockId)
+  const stock = resolveStockSync(orderInput.stockId)
   if (!stock) return delay({ ok: false, reason: 'order_rejected' })
 
   const market = getDSEMarketInfo()

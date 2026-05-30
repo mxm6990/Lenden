@@ -1,18 +1,25 @@
 import { Search } from 'lucide-react'
-import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { formatBDT, type Stock } from '../data/stocks'
-import { getDseSummary, getMarketStatus, searchStocks } from '../services/marketApi'
+import { getDseSummary, getMarketStatus } from '../services/marketApi'
+import { getSecurityCount, getSecurityListings } from '../services/securityCatalogApi'
 import { Card, ChangeText } from '../components/ui/Card'
+import { VirtualSecurityList } from '../components/market/VirtualSecurityList'
 import { ScreenHeader } from '../components/layout/ScreenHeader'
-import { BetaScreenLabels, MarketDataNotice, PrototypeBanner } from '../components/trust/ComplianceCopy'
+import {
+  BetaScreenLabels,
+  MarketDataNotice,
+  MarketStatisticsBanner,
+  PrototypeBanner,
+} from '../components/trust/ComplianceCopy'
 import { LoadingSkeleton, TrustState } from '../components/trust/TrustState'
+import type { SecurityListing } from '../types/security'
 
 export function MarketScreen() {
   const { openStock, isDemo } = useApp()
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<Stock[]>([])
+  const [results, setResults] = useState<SecurityListing[]>([])
+  const [securityCount, setSecurityCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [searching, setSearching] = useState(false)
   const [dseValue, setDseValue] = useState(0)
@@ -21,15 +28,16 @@ export function MarketScreen() {
   const [unavailable, setUnavailable] = useState(false)
 
   useEffect(() => {
-    Promise.all([getDseSummary(), getMarketStatus(), searchStocks('')])
-      .then(([dse, market, stocks]) => {
+    Promise.all([getDseSummary(), getMarketStatus(), getSecurityListings('')])
+      .then(([dse, market, listings]) => {
         setUnavailable(market.unavailable)
         setMarketStatus(market)
         if (dse) {
           setDseValue(dse.value)
           setDseChange({ value: dse.change, pct: dse.changePct })
         }
-        setResults(stocks)
+        setResults(listings)
+        setSecurityCount(getSecurityCount())
       })
       .finally(() => setLoading(false))
   }, [])
@@ -37,8 +45,11 @@ export function MarketScreen() {
   useEffect(() => {
     setSearching(true)
     const timer = setTimeout(() => {
-      searchStocks(query)
-        .then(setResults)
+      getSecurityListings(query)
+        .then((listings) => {
+          setResults(listings)
+          if (!query.trim()) setSecurityCount(getSecurityCount())
+        })
         .finally(() => setSearching(false))
     }, 200)
     return () => clearTimeout(timer)
@@ -50,6 +61,7 @@ export function MarketScreen() {
       <div className="px-5 pb-4">
         <PrototypeBanner className="mb-4" />
         <BetaScreenLabels isDemo={isDemo} className="mb-3" />
+        <MarketStatisticsBanner count={securityCount} className="mb-3" />
         <MarketDataNotice className="mb-4" />
 
         {loading ? (
@@ -93,13 +105,13 @@ export function MarketScreen() {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search stocks..."
+                placeholder="Search ticker or company name..."
                 className="w-full rounded-2xl border border-white/10 bg-lenden-surface py-3 pr-4 pl-11 text-sm text-white placeholder:text-lenden-muted outline-none focus:border-lenden-mint/40"
               />
             </div>
 
             <p className="mb-3 text-xs font-semibold tracking-wide text-lenden-muted uppercase">
-              DSE Stocks · {results.length} results
+              DSE Securities · {results.length} results
             </p>
 
             {searching && <LoadingSkeleton rows={2} className="mb-3" />}
@@ -107,37 +119,14 @@ export function MarketScreen() {
             {!searching && results.length === 0 && (
               <TrustState
                 variant="empty"
-                title="No stocks found"
+                title="No securities found"
                 message="Try a different ticker or company name."
               />
             )}
 
-            <div className="space-y-2">
-              {results.map((stock, i) => (
-                <motion.button
-                  key={stock.id}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.04 }}
-                  onClick={() => openStock(stock.id)}
-                  className="flex w-full items-center justify-between rounded-2xl border border-white/5 bg-lenden-card p-4 text-left active:scale-[0.99]"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-lenden-green text-xs font-bold text-white">
-                      {stock.ticker.slice(0, 2)}
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-white">{stock.ticker}</p>
-                      <p className="text-[11px] text-lenden-muted">{stock.name}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-white">{formatBDT(stock.price)}</p>
-                    <ChangeText value={stock.change} pct={stock.changePct} />
-                  </div>
-                </motion.button>
-              ))}
-            </div>
+            {!searching && results.length > 0 && (
+              <VirtualSecurityList items={results} onSelect={openStock} />
+            )}
           </>
         )}
       </div>

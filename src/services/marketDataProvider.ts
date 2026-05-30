@@ -7,6 +7,7 @@
 
 import { getStock, stocks, type Stock } from '../data/stocks'
 import { buildMockMarketQuote, buildMockMarketQuotes } from '../data/mockMarketQuotes'
+import { normalizeSecurityKey } from '../lib/securityListing'
 import { isSupabaseConfigured } from '../lib/supabase'
 import type {
   MarketDataBadgeLabel,
@@ -69,7 +70,12 @@ function interpolatePoints(points: number[], length: number): number[] {
 }
 
 function setCache(quotes: MarketQuote[], status: Partial<MarketDataStatus>) {
-  quoteCache = new Map(quotes.map((quote) => [quote.stockId, quote]))
+  quoteCache = new Map<string, MarketQuote>()
+  for (const quote of quotes) {
+    const tickerKey = quote.ticker.toUpperCase()
+    quoteCache.set(tickerKey, quote)
+    quoteCache.set(quote.stockId, quote)
+  }
   lastRefreshAt = Date.now()
   lastStatus = {
     ...lastStatus,
@@ -111,12 +117,6 @@ function logExperimentalDseQuoteAudit(quotes: MarketQuote[], status: MarketDataS
   console.groupEnd()
 }
 
-function resolveStockIdFromTicker(ticker: string): string | null {
-  const normalized = ticker.trim().toUpperCase()
-  const match = stocks.find((stock) => stock.ticker.toUpperCase() === normalized)
-  return match?.id ?? null
-}
-
 function asNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string' && value.trim()) {
@@ -139,11 +139,8 @@ function normalizeRemoteRow(raw: Record<string, unknown>, defaults: Partial<Mark
 
   if (!ticker) return null
 
-  const stockId = resolveStockIdFromTicker(ticker)
-  if (!stockId) return null
-
-  const stock = getStock(stockId)
-  if (!stock) return null
+  const normalized = normalizeSecurityKey(ticker)
+  const catalogStock = stocks.find((stock) => stock.ticker.toUpperCase() === normalized)
 
   const lastPrice =
     asNumber(raw.lastPrice) ??
@@ -168,9 +165,9 @@ function normalizeRemoteRow(raw: Record<string, unknown>, defaults: Partial<Mark
     new Date().toISOString()
 
   return {
-    stockId,
-    ticker: stock.ticker,
-    name: stock.name,
+    stockId: normalized,
+    ticker: normalized,
+    name: asString(raw.name) ?? catalogStock?.name ?? normalized,
     lastPrice,
     change,
     changePercent,
@@ -228,10 +225,14 @@ async function fetchRemoteQuotes(
 }
 
 function mergeWithMockFallback(remoteQuotes: MarketQuote[]): MarketQuote[] {
-  const merged = buildMockMarketQuotes()
-  const remoteById = new Map(remoteQuotes.map((quote) => [quote.stockId, quote]))
-
-  return merged.map((mockQuote) => remoteById.get(mockQuote.stockId) ?? mockQuote)
+  const remoteByTicker = new Map(remoteQuotes.map((quote) => [quote.ticker.toUpperCase(), quote]))
+  const catalogMock = buildMockMarketQuotes()
+  const mergedCatalog = catalogMock.map(
+    (mockQuote) => remoteByTicker.get(mockQuote.ticker.toUpperCase()) ?? mockQuote,
+  )
+  const catalogTickers = new Set(catalogMock.map((quote) => quote.ticker.toUpperCase()))
+  const extras = remoteQuotes.filter((quote) => !catalogTickers.has(quote.ticker.toUpperCase()))
+  return [...mergedCatalog, ...extras]
 }
 
 function readProxyUrl(): string | null {
@@ -391,7 +392,27 @@ export function getMarketDataStatus(): MarketDataStatus {
 }
 
 export function getCachedMarketQuote(stockId: string): MarketQuote | null {
-  return quoteCache.get(stockId) ?? buildMockMarketQuote(stockId)
+  const normalized = normalizeSecurityKey(stockId)
+  return (
+    quoteCache.get(normalized) ??
+    quoteCache.get(stockId) ??
+    buildMockMarketQuote(normalized) ??
+    buildMockMarketQuote(stockId)
+  )
+}
+
+export function getAllCachedMarketQuotes(): MarketQuote[] {
+  const seen = new Set<string>()
+  const results: MarketQuote[] = []
+
+  for (const quote of quoteCache.values()) {
+    const key = quote.ticker.toUpperCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    results.push(quote)
+  }
+
+  return results.sort((a, b) => a.ticker.localeCompare(b.ticker))
 }
 
 export async function getMarketQuote(stockId: string): Promise<MarketQuote | null> {
@@ -405,9 +426,7 @@ export async function getMarketQuote(stockId: string): Promise<MarketQuote | nul
 
 export async function getMarketQuotes(): Promise<MarketQuote[]> {
   await refreshMarketQuotes()
-  return stocks
-    .map((stock) => getCachedMarketQuote(stock.id))
-    .filter((quote): quote is MarketQuote => quote !== null)
+  return getAllCachedMarketQuotes()
 }
 
 export async function refreshMarketQuotes(force = false, stockId?: string): Promise<MarketQuote[]> {
@@ -536,11 +555,12 @@ export async function refreshMarketQuotes(force = false, stockId?: string): Prom
 }
 
 export function applyQuoteToStock(stock: Stock): Stock {
-  const quote = getCachedMarketQuote(stock.id)
+  const quote = getCachedMarketQuote(stock.ticker) ?? getCachedMarketQuote(stock.id)
   if (!quote) return stock
 
   return {
     ...stock,
+    id: stock.ticker.toUpperCase(),
     price: quote.lastPrice,
     change: quote.change,
     changePct: quote.changePercent,
@@ -548,7 +568,13 @@ export function applyQuoteToStock(stock: Stock): Stock {
 }
 
 export function getStockPrice(stockId: string): number {
-  return getCachedMarketQuote(stockId)?.lastPrice ?? getStock(stockId)?.price ?? 0
+  const normalized = normalizeSecurityKey(stockId)
+  return (
+    getCachedMarketQuote(normalized)?.lastPrice ??
+    getCachedMarketQuote(stockId)?.lastPrice ??
+    getStock(stockId)?.price ??
+    0
+  )
 }
 
 export function getStockPriceOnDayIndex(
@@ -556,8 +582,9 @@ export function getStockPriceOnDayIndex(
   dayIndex: number,
   historyLength: number,
 ): number {
-  const stock = getStock(stockId)
-  if (!stock) return 0
+  const normalized = normalizeSecurityKey(stockId)
+  const stock = getStock(stockId) ?? stocks.find((entry) => entry.ticker.toUpperCase() === normalized)
+  if (!stock) return getStockPrice(stockId)
   const prices = interpolatePoints(stock.chartPoints, historyLength)
   return prices[dayIndex] ?? getStockPrice(stockId)
 }

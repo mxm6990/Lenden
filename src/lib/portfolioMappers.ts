@@ -1,6 +1,7 @@
 import type { BuyingPower } from '../data/portfolio'
 import type { PastTransaction, TransactionType } from '../data/transactions'
-import { getStock, type EnrichedHolding } from '../data/stocks'
+import { type EnrichedHolding } from '../data/stocks'
+import { resolveStockSync } from '../lib/securityListing'
 import {
   calculateHoldingMarketValue,
   computePortfolioSummaryFromHoldings,
@@ -34,7 +35,7 @@ export interface TransactionRow {
 export function enrichHoldings(rows: HoldingRow[]): EnrichedHolding[] {
   return rows
     .map((row) => {
-      const stock = getStock(row.stock_id)
+      const stock = resolveStockSync(row.stock_id)
       if (!stock) return null
       const shares = Number(row.shares)
       const avgCost = Number(row.avg_cost)
@@ -43,7 +44,7 @@ export function enrichHoldings(rows: HoldingRow[]): EnrichedHolding[] {
       const returnAmount = currentValue - invested
       const returnPct = invested > 0 ? (returnAmount / invested) * 100 : 0
       return {
-        stockId: row.stock_id,
+        stockId: stock.id,
         shares,
         avgCost,
         stock,

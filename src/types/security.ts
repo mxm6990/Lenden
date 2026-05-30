@@ -1,6 +1,15 @@
 /**
- * Security quote types — aligned with future `GET /api/securities/:symbol/quote`.
+ * Security catalog types — DSE securities master + quote types.
  */
+
+export interface Security {
+  id: string
+  ticker: string
+  companyName: string
+  sector: string | null
+  exchange: string
+  isActive: boolean
+}
 
 export interface SecurityQuote {
   symbol: string
@@ -44,3 +53,16 @@ export type SecurityQuoteField =
   | 'week52Low'
   | 'peRatio'
   | 'dividendYield'
+
+export interface SecurityListing extends Security {
+  lastPrice: number
+  change: number
+  changePct: number
+  sourceLabel: string
+}
+
+export interface SecuritiesCatalogSnapshot {
+  securities: Security[]
+  source: 'supabase' | 'quotes' | 'fallback'
+  loadedAt: string
+}

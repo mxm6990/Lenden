@@ -1,16 +1,18 @@
 /**
  * Mock market API — DSE summary, stocks, search, market status.
- * Prices come from marketDataProvider (mock / experimental / licensed).
+ * Securities catalog + prices from marketDataProvider.
  */
 
 import { DSE_STATUS_STYLES, getDSEMarketInfo } from '../data/dseMarket'
-import { DSE_INDEX, getStock, stocks, type Stock } from '../data/stocks'
+import { DSE_INDEX, type Stock } from '../data/stocks'
 import type { DseSummaryPayload } from '../api-contracts/market.contract'
+import { getMarketDataStatus, refreshMarketQuotes } from './marketDataProvider'
 import {
-  applyQuoteToStock,
-  getMarketDataStatus,
-  refreshMarketQuotes,
-} from './marketDataProvider'
+  getSecurityListings,
+  refreshSecurityCatalog,
+  securityToStock,
+} from './securityCatalogApi'
+import { matchesStockId } from '../lib/securityListing'
 
 const MOCK_DELAY_MS = 80
 
@@ -29,9 +31,11 @@ export interface MarketStatusInfo {
   unavailable: boolean
 }
 
-async function loadQuotedStocks(): Promise<Stock[]> {
+async function loadQuotedStocks(query = ''): Promise<Stock[]> {
+  await refreshSecurityCatalog()
   await refreshMarketQuotes()
-  return stocks.map(applyQuoteToStock)
+  const listings = await getSecurityListings(query)
+  return listings.map((listing) => securityToStock(listing, listing))
 }
 
 export async function getDseSummary(): Promise<DseSummaryPayload | null> {
@@ -54,14 +58,8 @@ export async function getStocks(): Promise<Stock[]> {
 }
 
 export async function searchStocks(query: string): Promise<Stock[]> {
-  const all = simulateMarketUnavailable ? [] : await loadQuotedStocks()
-  const q = query.trim().toLowerCase()
-  if (!q) return delay([...all])
-  return delay(
-    all.filter(
-      (stock) => stock.ticker.toLowerCase().includes(q) || stock.name.toLowerCase().includes(q),
-    ),
-  )
+  if (simulateMarketUnavailable) return delay([])
+  return delay(loadQuotedStocks(query))
 }
 
 export async function getStockByTicker(ticker: string): Promise<Stock | null> {
@@ -72,7 +70,7 @@ export async function getStockByTicker(ticker: string): Promise<Stock | null> {
 
 export async function getStockById(stockId: string): Promise<Stock | null> {
   const all = await loadQuotedStocks()
-  return delay(all.find((stock) => stock.id === stockId) ?? getStock(stockId) ?? null)
+  return delay(all.find((stock) => matchesStockId(stock.id, stockId)) ?? null)
 }
 
 export async function getMarketStatus(): Promise<MarketStatusInfo> {

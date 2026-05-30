@@ -1,8 +1,10 @@
 import { Bookmark, BookmarkCheck } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { formatBDT, getStock } from '../data/stocks'
+import { formatBDT, type Stock } from '../data/stocks'
+import { matchesStockId } from '../lib/securityListing'
 import { fetchSecurityQuote, formatMarketCap, formatRatio, formatVolume } from '../services/securityApi'
+import { resolveStockForTrading } from '../services/securityCatalogApi'
 import { fetchUserPosition } from '../services/positionApi'
 import type { SecurityQuote } from '../types/security'
 import type { UserPosition } from '../types/position'
@@ -12,6 +14,7 @@ import { Card } from '../components/ui/Card'
 import { StockHistoryChart } from '../components/charts/StockHistoryChart'
 import { ScreenHeader } from '../components/layout/ScreenHeader'
 import { BetaScreenLabels, MarketDataNotice, PrototypeBanner } from '../components/trust/ComplianceCopy'
+import { LoadingSkeleton, TrustState } from '../components/trust/TrustState'
 
 const ACTION_BAR_BUTTON_CLASS = 'h-11 w-full'
 
@@ -65,12 +68,32 @@ export function StockDetailScreen() {
     portfolioVersion,
     isDemo,
   } = useApp()
-  const stock = selectedStockId ? getStock(selectedStockId) : null
+  const [stock, setStock] = useState<Stock | null>(null)
   const [quote, setQuote] = useState<SecurityQuote | null>(null)
   const [position, setPosition] = useState<UserPosition | null>(null)
+  const [stockLoading, setStockLoading] = useState(true)
   const [quoteLoading, setQuoteLoading] = useState(true)
   const [positionLoading, setPositionLoading] = useState(true)
   const [canSell, setCanSell] = useState(false)
+
+  useEffect(() => {
+    if (!selectedStockId) return
+
+    let cancelled = false
+    setStockLoading(true)
+
+    resolveStockForTrading(selectedStockId)
+      .then((resolved) => {
+        if (!cancelled) setStock(resolved)
+      })
+      .finally(() => {
+        if (!cancelled) setStockLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedStockId])
 
   useEffect(() => {
     if (!selectedStockId) return
@@ -113,9 +136,33 @@ export function StockDetailScreen() {
     }
   }, [selectedStockId, portfolioVersion])
 
-  if (!stock) return null
+  if (stockLoading) {
+    return (
+      <>
+        <ScreenHeader title="Loading…" subtitle="Security details" onBack={closeOverlay} />
+        <div className="px-5 pb-28">
+          <LoadingSkeleton rows={6} />
+        </div>
+      </>
+    )
+  }
 
-  const inWatchlist = watchlist.includes(stock.id)
+  if (!stock) {
+    return (
+      <>
+        <ScreenHeader title="Security" subtitle="Not found" onBack={closeOverlay} />
+        <div className="px-5 pb-28">
+          <TrustState
+            variant="empty"
+            title="Security not found"
+            message="This ticker is not in the current DSE catalog."
+          />
+        </div>
+      </>
+    )
+  }
+
+  const inWatchlist = watchlist.some((id) => matchesStockId(id, stock.id))
   const displayQuote = quote ?? {
     lastPrice: stock.price,
     change: stock.change,

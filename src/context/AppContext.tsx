@@ -18,6 +18,7 @@ import type { ProfileRoute } from '../types/profile'
 import { isDemoModeActive, setDemoModeActive } from '../lib/demoMode'
 import { getUserProfileResult } from '../services/profileApi'
 import { refreshMarketQuotes } from '../services/marketDataProvider'
+import { refreshSecurityCatalog } from '../services/securityCatalogApi'
 import {
   addWatchlistStock,
   getWatchlistStockIds,
@@ -107,7 +108,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [buyStep, setBuyStep] = useState<BuyStep>('amount')
   const [sellStep, setSellStep] = useState<BuyStep>('amount')
   const [buyAmount, setBuyAmount] = useState(500)
-  const [watchlist, setWatchlist] = useState(['gp', 'renata', 'marico'])
+  const [watchlist, setWatchlist] = useState(['GP', 'RENATA', 'MARICO'])
   const [user, setUser] = useState<UserProfile>(defaultUser)
   const [portfolioVersion, setPortfolioVersion] = useState(0)
   const [profileVersion, setProfileVersion] = useState(0)
@@ -131,7 +132,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const run = (async () => {
       setDataRefreshing(true)
       try {
-        await refreshMarketQuotes(true)
+        await Promise.all([refreshMarketQuotes(true), refreshSecurityCatalog(true)])
 
         if (!isDemoModeActive() && isSupabaseConfigured()) {
           const [profileResult, watchlistIds] = await Promise.all([
@@ -175,7 +176,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setBuyStep('amount')
     setSellStep('amount')
     setBuyAmount(500)
-    setWatchlist(['gp', 'renata', 'marico'])
+    setWatchlist(['GP', 'RENATA', 'MARICO'])
     setUser(defaultUser)
     setPortfolioVersion(0)
     setProfileVersion(0)
@@ -202,7 +203,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let cancelled = false
 
     async function bootstrap() {
-      await refreshMarketQuotes()
+      await Promise.all([refreshMarketQuotes(), refreshSecurityCatalog()])
       const session = await getAuthSession()
       if (cancelled) return
       if (session) {
@@ -249,7 +250,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         enterDemo: () => {
           setDemoModeActive(true)
           setIsDemo(true)
-          setWatchlist(['gp', 'renata', 'marico'])
+          setWatchlist(['GP', 'RENATA', 'MARICO'])
           setUser({
             fullName: 'Mahathir',
             phone: '+880 17XX-XXX-XXX',

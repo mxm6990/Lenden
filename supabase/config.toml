@@ -2,3 +2,6 @@
 
 [functions.dse-market-data]
 verify_jwt = false
+
+[functions.sync-securities]
+verify_jwt = false

@@ -91,8 +91,8 @@ export function normalizeDseRow(
 
   if (!tradingCode) return null
 
-  const catalogEntry = findCatalogEntry({ ticker: tradingCode })
-  if (!catalogEntry) return null
+  const ticker = tradingCode.trim().toUpperCase()
+  const catalogEntry = findCatalogEntry({ ticker })
 
   const lastPrice =
     parseNumber(row.LTP) ??
@@ -112,9 +112,9 @@ export function normalizeDseRow(
   const volume = parseNumber(row.VOLUME) ?? parseNumber(row.volume) ?? 0
 
   return {
-    stockId: catalogEntry.stockId,
-    ticker: catalogEntry.ticker,
-    name: catalogEntry.name,
+    stockId: ticker,
+    ticker,
+    name: catalogEntry?.name ?? ticker,
     lastPrice,
     change,
     changePercent,
@@ -148,10 +148,19 @@ export function extractDseRows(payload: unknown): Record<string, unknown>[] {
 }
 
 export function mergeQuotesWithCatalog(remoteQuotes: MarketQuote[]): MarketQuote[] {
-  const remoteById = new Map(remoteQuotes.map((quote) => [quote.stockId, quote]))
-  return LENDEN_STOCK_CATALOG.map((entry) => {
-    return remoteById.get(entry.stockId) ?? buildQuoteFromCatalog(entry)
+  if (remoteQuotes.length === 0) {
+    return buildMockMarketQuotes()
+  }
+
+  const remoteByTicker = new Map(remoteQuotes.map((quote) => [quote.ticker.toUpperCase(), quote]))
+  const mergedCatalog = LENDEN_STOCK_CATALOG.map((entry) => {
+    return remoteByTicker.get(entry.ticker.toUpperCase()) ?? buildQuoteFromCatalog(entry)
   })
+
+  const catalogTickers = new Set(LENDEN_STOCK_CATALOG.map((entry) => entry.ticker.toUpperCase()))
+  const extras = remoteQuotes.filter((quote) => !catalogTickers.has(quote.ticker.toUpperCase()))
+
+  return [...mergedCatalog, ...extras]
 }
 
 export function buildStatus(params: {

@@ -18,6 +18,9 @@ const REQUIRED_MIGRATIONS = [
   '003_persistent_investing.sql',
   '004_schema_integrity_and_atomic_mock_buy.sql',
   '005_submit_mock_sell.sql',
+  '006_market_quotes_cache.sql',
+  '007_securities_master.sql',
+  '008_legacy_stock_id_backfill.sql',
 ]
 
 const checks = []

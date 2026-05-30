@@ -148,8 +148,13 @@ export function getEnrichedHoldings(): EnrichedHolding[] {
     .filter((h): h is EnrichedHolding => h !== null)
 }
 
+import { normalizeSecurityKey } from '../lib/securityListing'
+
 export function getStock(id: string): Stock | undefined {
-  return stocks.find((s) => s.id === id)
+  const byId = stocks.find((s) => s.id === id)
+  if (byId) return byId
+  const normalized = normalizeSecurityKey(id)
+  return stocks.find((s) => s.ticker.toUpperCase() === normalized)
 }
 
 export function formatBDT(amount: number, compact = false): string {
