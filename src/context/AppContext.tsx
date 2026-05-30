@@ -17,6 +17,7 @@ import type {
 import type { ProfileRoute } from '../types/profile'
 import { isDemoModeActive, setDemoModeActive } from '../lib/demoMode'
 import { getUserProfileResult } from '../services/profileApi'
+import { refreshMarketQuotes } from '../services/marketDataProvider'
 import {
   addWatchlistStock,
   getWatchlistStockIds,
@@ -130,6 +131,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const run = (async () => {
       setDataRefreshing(true)
       try {
+        await refreshMarketQuotes(true)
+
         if (!isDemoModeActive() && isSupabaseConfigured()) {
           const [profileResult, watchlistIds] = await Promise.all([
             getUserProfileResult(),
@@ -199,6 +202,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let cancelled = false
 
     async function bootstrap() {
+      await refreshMarketQuotes()
       const session = await getAuthSession()
       if (cancelled) return
       if (session) {

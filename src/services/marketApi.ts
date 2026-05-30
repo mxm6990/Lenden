@@ -1,11 +1,16 @@
 /**
  * Mock market API — DSE summary, stocks, search, market status.
- * Replace with market data provider integration when live.
+ * Prices come from marketDataProvider (mock / experimental / licensed).
  */
 
 import { DSE_STATUS_STYLES, getDSEMarketInfo } from '../data/dseMarket'
 import { DSE_INDEX, getStock, stocks, type Stock } from '../data/stocks'
 import type { DseSummaryPayload } from '../api-contracts/market.contract'
+import {
+  applyQuoteToStock,
+  getMarketDataStatus,
+  refreshMarketQuotes,
+} from './marketDataProvider'
 
 const MOCK_DELAY_MS = 80
 
@@ -24,6 +29,11 @@ export interface MarketStatusInfo {
   unavailable: boolean
 }
 
+async function loadQuotedStocks(): Promise<Stock[]> {
+  await refreshMarketQuotes()
+  return stocks.map(applyQuoteToStock)
+}
+
 export async function getDseSummary(): Promise<DseSummaryPayload | null> {
   if (simulateMarketUnavailable) return delay(null)
   const info = getDSEMarketInfo()
@@ -34,34 +44,35 @@ export async function getDseSummary(): Promise<DseSummaryPayload | null> {
     changePct: DSE_INDEX.changePct,
     status: info.status,
     asOf: new Date().toISOString(),
-    delayed: true,
+    delayed: getMarketDataStatus().isDelayed,
   })
 }
 
 export async function getStocks(): Promise<Stock[]> {
   if (simulateMarketUnavailable) return delay([])
-  // return fetch('/api/market/stocks').then(...)
-  return delay([...stocks])
+  return delay(loadQuotedStocks())
 }
 
 export async function searchStocks(query: string): Promise<Stock[]> {
-  const all = simulateMarketUnavailable ? [] : stocks
+  const all = simulateMarketUnavailable ? [] : await loadQuotedStocks()
   const q = query.trim().toLowerCase()
   if (!q) return delay([...all])
   return delay(
     all.filter(
-      (s) => s.ticker.toLowerCase().includes(q) || s.name.toLowerCase().includes(q),
+      (stock) => stock.ticker.toLowerCase().includes(q) || stock.name.toLowerCase().includes(q),
     ),
   )
 }
 
 export async function getStockByTicker(ticker: string): Promise<Stock | null> {
-  const match = stocks.find((s) => s.ticker.toLowerCase() === ticker.toLowerCase())
+  const all = await loadQuotedStocks()
+  const match = all.find((stock) => stock.ticker.toLowerCase() === ticker.toLowerCase())
   return delay(match ?? null)
 }
 
 export async function getStockById(stockId: string): Promise<Stock | null> {
-  return delay(getStock(stockId) ?? null)
+  const all = await loadQuotedStocks()
+  return delay(all.find((stock) => stock.id === stockId) ?? getStock(stockId) ?? null)
 }
 
 export async function getMarketStatus(): Promise<MarketStatusInfo> {
@@ -75,10 +86,11 @@ export async function getMarketStatus(): Promise<MarketStatusInfo> {
     })
   }
   const info = getDSEMarketInfo()
+  const dataStatus = getMarketDataStatus()
   return delay({
     ...info,
-    isDelayed: true,
-    unavailable: false,
+    isDelayed: dataStatus.isDelayed,
+    unavailable: dataStatus.badge === 'Data Unavailable' && !dataStatus.fellBackToMock,
   })
 }
 

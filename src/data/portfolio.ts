@@ -1,4 +1,5 @@
 import { getEnrichedHoldings, getStock, holdings, type EnrichedHolding } from './stocks'
+import { getStockPrice } from '../services/marketDataProvider'
 
 export interface PortfolioHistoryPoint {
   label: string
@@ -69,7 +70,13 @@ function stockValueOnDay(stockId: string, dayIndex: number, historyLength: numbe
 
 /** Single source of truth for holdings-based portfolio totals */
 export function getPortfolioSummary(): PortfolioSummary {
-  const enriched = getEnrichedHoldings()
+  const enriched = getEnrichedHoldings().map((holding) => {
+    const currentValue = holding.shares * getStockPrice(holding.stockId)
+    const invested = holding.invested
+    const returnAmount = currentValue - invested
+    const returnPct = invested > 0 ? (returnAmount / invested) * 100 : 0
+    return { ...holding, currentValue, returnAmount, returnPct }
+  })
   const totalInvested = enriched.reduce((sum, h) => sum + h.invested, 0)
   const totalValue = enriched.reduce((sum, h) => sum + h.currentValue, 0)
   const totalGain = totalValue - totalInvested

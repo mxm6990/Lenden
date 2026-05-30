@@ -1,10 +1,15 @@
 /**
- * Security quote service — mock until market data API is connected.
+ * Security quote service — uses marketDataProvider for prices.
  *
- * Replace with: GET /api/securities/:symbol/quote
+ * Replace with backend proxy when licensed production feed is available.
  */
 
 import { getStock, stocks } from '../data/stocks'
+import {
+  getCachedMarketQuote,
+  getMarketDataStatus,
+  refreshMarketQuotes,
+} from '../services/marketDataProvider'
 import type { SecurityQuote, SecurityQuoteApiResponse } from '../types/security'
 
 const MOCK_DELAY_MS = 80
@@ -13,12 +18,12 @@ function delay<T>(value: T): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(value), MOCK_DELAY_MS))
 }
 
-/** Mock quote payloads keyed by stock id — mirrors expected API response bodies */
-const MOCK_QUOTES: Record<string, Omit<SecurityQuoteApiResponse['quote'], never>> = {
+/** Extended mock metrics keyed by stock id */
+const MOCK_METRICS: Record<
+  string,
+  Omit<SecurityQuoteApiResponse['quote'], 'lastPrice' | 'change' | 'changePct'>
+> = {
   gp: {
-    lastPrice: 298.5,
-    change: 4.2,
-    changePct: 1.43,
     value: 842_500_000,
     volume: 2_840_000,
     averageVolume: 2_100_000,
@@ -32,9 +37,6 @@ const MOCK_QUOTES: Record<string, Omit<SecurityQuoteApiResponse['quote'], never>
     dividendYield: 5.8,
   },
   brac: {
-    lastPrice: 52.8,
-    change: 0.3,
-    changePct: 0.57,
     value: 128_400_000,
     volume: 4_520_000,
     averageVolume: 3_800_000,
@@ -48,9 +50,6 @@ const MOCK_QUOTES: Record<string, Omit<SecurityQuoteApiResponse['quote'], never>
     dividendYield: 3.2,
   },
   squr: {
-    lastPrice: 215.0,
-    change: -0.8,
-    changePct: -0.37,
     value: 96_200_000,
     volume: 890_000,
     averageVolume: 1_050_000,
@@ -64,9 +63,6 @@ const MOCK_QUOTES: Record<string, Omit<SecurityQuoteApiResponse['quote'], never>
     dividendYield: 2.1,
   },
   batbc: {
-    lastPrice: 412.0,
-    change: 6.5,
-    changePct: 1.6,
     value: 215_800_000,
     volume: 520_000,
     averageVolume: 480_000,
@@ -80,9 +76,6 @@ const MOCK_QUOTES: Record<string, Omit<SecurityQuoteApiResponse['quote'], never>
     dividendYield: 6.4,
   },
   renata: {
-    lastPrice: 890.0,
-    change: 12.0,
-    changePct: 1.37,
     value: 178_400_000,
     volume: 198_000,
     averageVolume: 240_000,
@@ -96,9 +89,6 @@ const MOCK_QUOTES: Record<string, Omit<SecurityQuoteApiResponse['quote'], never>
     dividendYield: 1.8,
   },
   marico: {
-    lastPrice: 178.5,
-    change: 1.2,
-    changePct: 0.68,
     value: 42_600_000,
     volume: 310_000,
     averageVolume: 285_000,
@@ -113,35 +103,45 @@ const MOCK_QUOTES: Record<string, Omit<SecurityQuoteApiResponse['quote'], never>
   },
 }
 
-function buildQuoteFromStock(stockId: string): SecurityQuote | null {
+function buildQuoteFromMarketData(stockId: string): SecurityQuote | null {
   const stock = getStock(stockId)
   if (!stock) return null
 
-  const mock = MOCK_QUOTES[stockId]
-  if (mock) {
+  const marketQuote = getCachedMarketQuote(stockId)
+  const metrics = MOCK_METRICS[stockId]
+  const lastPrice = marketQuote?.lastPrice ?? stock.price
+  const change = marketQuote?.change ?? stock.change
+  const changePct = marketQuote?.changePercent ?? stock.changePct
+  const asOf = marketQuote?.tradeTime ?? new Date().toISOString()
+
+  if (metrics) {
     return {
       stockId,
       symbol: stock.ticker,
-      asOf: new Date().toISOString(),
-      ...mock,
+      asOf,
+      lastPrice,
+      change,
+      changePct,
+      ...metrics,
+      volume: marketQuote?.volume ?? metrics.volume,
     }
   }
 
-  const prevClose = stock.price - stock.change
+  const prevClose = lastPrice - change
   return {
     stockId,
     symbol: stock.ticker,
-    asOf: new Date().toISOString(),
-    lastPrice: stock.price,
-    change: stock.change,
-    changePct: stock.changePct,
-    value: stock.price * 500_000,
-    volume: 500_000,
+    asOf,
+    lastPrice,
+    change,
+    changePct,
+    value: lastPrice * 500_000,
+    volume: marketQuote?.volume ?? 500_000,
     averageVolume: 450_000,
     open: prevClose,
-    dayHigh: Math.max(stock.price, prevClose) + 1,
-    dayLow: Math.min(stock.price, prevClose) - 1,
-    marketCap: stock.price * 1_000_000_000,
+    dayHigh: Math.max(lastPrice, prevClose) + 1,
+    dayLow: Math.min(lastPrice, prevClose) - 1,
+    marketCap: lastPrice * 1_000_000_000,
     week52High: Math.max(...stock.chartPoints) * 1.05,
     week52Low: Math.min(...stock.chartPoints) * 0.92,
     peRatio: Number.parseFloat(stock.peRatio) || null,
@@ -168,23 +168,23 @@ export function formatRatio(value: number | null, suffix = ''): string {
 }
 
 export function getSecurityQuote(stockId: string): SecurityQuote | null {
-  return buildQuoteFromStock(stockId)
+  return buildQuoteFromMarketData(stockId)
 }
 
 export async function fetchSecurityQuote(stockId: string): Promise<SecurityQuote | null> {
-  // const res = await fetch(`/api/securities/${stockId}/quote`)
-  // if (!res.ok) throw new Error('Failed to load quote')
-  // const payload: SecurityQuoteApiResponse = await res.json()
-  // return { stockId, symbol: payload.symbol, asOf: payload.asOf, ...payload.quote }
+  await refreshMarketQuotes()
   return delay(getSecurityQuote(stockId))
 }
 
 export async function fetchAllSecurityQuotes(): Promise<SecurityQuote[]> {
-  // const res = await fetch('/api/securities/quotes')
-  // ...
+  await refreshMarketQuotes()
   return delay(
     stocks
-      .map((s) => getSecurityQuote(s.id))
-      .filter((q): q is SecurityQuote => q !== null),
+      .map((stock) => getSecurityQuote(stock.id))
+      .filter((quote): quote is SecurityQuote => quote !== null),
   )
+}
+
+export function getSecurityQuoteSourceLabel(): string {
+  return getMarketDataStatus().sourceLabel
 }

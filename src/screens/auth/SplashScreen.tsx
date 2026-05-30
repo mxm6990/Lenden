@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { useApp } from '../../context/AppContext'
 import { Button } from '../../components/ui/Button'
 import { SplashHero } from '../../components/SplashHero'
+import { ClosedBetaBadge, ComplianceFooter } from '../../components/trust/ComplianceCopy'
 
 export function SplashScreen() {
   const { goToAuth, enterDemo } = useApp()
@@ -24,6 +25,8 @@ export function SplashScreen() {
         transition={{ duration: 0.6, delay: 0.15 }}
         className="relative shrink-0 px-6 safe-bottom-lg"
       >
+        <ComplianceFooter className="mb-3" />
+        <ClosedBetaBadge className="mb-4" />
         <div className="mx-auto w-full max-w-full space-y-3">
           <Button fullWidth size="lg" onClick={() => goToAuth('signup')}>
             Create Account

@@ -12,7 +12,7 @@ import { PortfolioChart } from '../components/charts/PortfolioChart'
 import { Button } from '../components/ui/Button'
 import { Card, ChangeText } from '../components/ui/Card'
 import { ScreenHeader } from '../components/layout/ScreenHeader'
-import { PrototypeBanner, PrototypeModeBadge } from '../components/trust/ComplianceCopy'
+import { BetaScreenLabels, PrototypeBanner } from '../components/trust/ComplianceCopy'
 import { LoadingSkeleton, TrustState } from '../components/trust/TrustState'
 
 type LoadState = 'loading' | 'success' | 'error'
@@ -90,7 +90,7 @@ export function AllocationDetailScreen() {
 
       <div className="px-5 pb-4">
         <PrototypeBanner className="mb-4" />
-        {isDemo && <PrototypeModeBadge className="mb-3" />}
+        <BetaScreenLabels isDemo={isDemo} className="mb-3" />
         {dataRefreshing && (
           <p className="mb-3 text-center text-[10px] text-lenden-muted">Refreshing portfolio…</p>
         )}

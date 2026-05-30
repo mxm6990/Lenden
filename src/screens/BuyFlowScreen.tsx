@@ -15,7 +15,7 @@ import type { MockOrderReceipt } from '../types/trading'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { ScreenHeader } from '../components/layout/ScreenHeader'
-import { PrototypeBanner, PrototypeModeBadge } from '../components/trust/ComplianceCopy'
+import { BetaScreenLabels, PrototypeBanner } from '../components/trust/ComplianceCopy'
 import { TrustState } from '../components/trust/TrustState'
 
 const PRESET_AMOUNTS = [500, 1000, 2500, 5000]
@@ -77,6 +77,7 @@ export function BuyFlowScreen() {
 
   const [stock, setStock] = useState<Awaited<ReturnType<typeof getStockById>>>(null)
   const [buyingPower, setBuyingPower] = useState(0)
+  const [buyingPowerError, setBuyingPowerError] = useState<string | null>(null)
   const [amountInput, setAmountInput] = useState('')
   const [preview, setPreview] = useState<Awaited<ReturnType<typeof previewOrder>> | null>(null)
   const [failure, setFailure] = useState<OrderFailureReason | null>(null)
@@ -91,9 +92,13 @@ export function BuyFlowScreen() {
 
   useEffect(() => {
     getBuyingPowerResult().then((result) => {
-      if (!result.error) {
-        setBuyingPower(result.data.available)
+      if (result.error) {
+        setBuyingPowerError(result.error)
+        setBuyingPower(0)
+        return
       }
+      setBuyingPowerError(null)
+      setBuyingPower(result.data.available)
     })
   }, [portfolioVersion, buyStep])
 
@@ -217,13 +222,22 @@ export function BuyFlowScreen() {
       />
       <div className="px-5 pb-8">
         <PrototypeBanner className="mb-4" />
-        {isDemo && <PrototypeModeBadge className="mb-3" />}
+        <BetaScreenLabels isDemo={isDemo} className="mb-3" />
 
         {(failure || errorMessage) && (
           <TrustState
             variant="warning"
             title={failure ? FAILURE_COPY[failure].title : 'Check your order'}
             message={errorMessage ?? (failure ? FAILURE_COPY[failure].message : '')}
+            className="mb-4"
+          />
+        )}
+
+        {buyingPowerError && (
+          <TrustState
+            variant="error"
+            title="Buying power unavailable"
+            message={buyingPowerError}
             className="mb-4"
           />
         )}

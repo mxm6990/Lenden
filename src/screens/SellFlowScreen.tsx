@@ -15,7 +15,7 @@ import type { MockOrderReceipt } from '../types/trading'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { ScreenHeader } from '../components/layout/ScreenHeader'
-import { PrototypeBanner, PrototypeModeBadge } from '../components/trust/ComplianceCopy'
+import { BetaScreenLabels, PrototypeBanner } from '../components/trust/ComplianceCopy'
 import { TrustState } from '../components/trust/TrustState'
 
 const FAILURE_COPY: Record<OrderFailureReason, { title: string; message: string }> = {
@@ -217,7 +217,7 @@ export function SellFlowScreen() {
       />
       <div className="px-5 pb-8">
         <PrototypeBanner className="mb-4" />
-        {isDemo && <PrototypeModeBadge className="mb-3" />}
+        <BetaScreenLabels isDemo={isDemo} className="mb-3" />
 
         {(failure || errorMessage) && (
           <TrustState

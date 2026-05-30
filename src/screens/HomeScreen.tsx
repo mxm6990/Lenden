@@ -13,7 +13,7 @@ import { PortfolioChart } from '../components/charts/PortfolioChart'
 import { BuyingPowerCard } from '../components/portfolio/BuyingPowerCard'
 import { HoldingRow } from '../components/portfolio/HoldingRow'
 import { PastTransactionsSection } from '../components/portfolio/PastTransactionsSection'
-import { PrototypeBanner, PrototypeModeBadge } from '../components/trust/ComplianceCopy'
+import { BetaScreenLabels, MarketDataNotice, PrototypeBanner } from '../components/trust/ComplianceCopy'
 import { LoadingSkeleton, TrustState } from '../components/trust/TrustState'
 
 export function HomeScreen() {
@@ -77,7 +77,8 @@ export function HomeScreen() {
     <div className="px-5 pt-14 pb-4">
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
         <PrototypeBanner className="mb-4" />
-        {isDemo && <PrototypeModeBadge className="mb-3" />}
+        <BetaScreenLabels isDemo={isDemo} className="mb-3" />
+        <MarketDataNotice className="mb-4" />
         <div className="mb-1 flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-lg font-medium text-lenden-muted">{greeting}</p>

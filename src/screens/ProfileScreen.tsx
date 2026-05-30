@@ -14,7 +14,7 @@ import {
 } from '../services/profileApi'
 import { appendAuditLog } from '../services/auditApi'
 import { getAuthenticatedUserId } from '../lib/supabaseAuth'
-import { PrototypeBanner, PrototypeModeBadge } from '../components/trust/ComplianceCopy'
+import { BetaScreenLabels, PrototypeBanner } from '../components/trust/ComplianceCopy'
 import { LoadingSkeleton, TrustState } from '../components/trust/TrustState'
 import { Button } from '../components/ui/Button'
 import type { ProfileRoute, SecuritySettings, UserProfile, VerificationStatus } from '../types/profile'
@@ -185,7 +185,7 @@ export function ProfileScreen() {
       <ScreenHeader title="Profile" subtitle="Account & compliance" large />
       <div className="px-5 pb-4">
         <PrototypeBanner className="mb-4" />
-        {isDemo && <PrototypeModeBadge className="mb-3" />}
+        <BetaScreenLabels isDemo={isDemo} className="mb-3" />
         {kycPending && (
           <TrustState
             variant="warning"

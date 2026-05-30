@@ -1,10 +1,57 @@
 /**
- * Market data adapter — mock by default; experimental DSE endpoint optional.
- * Do not scrape DSE from the frontend.
+ * Market data adapter — mock by default; optional experimental or licensed endpoints.
+ * Do not scrape DSE from the frontend. Do not hardcode unofficial endpoints.
+ *
+ * Experimental DSE adapter for local testing only. Confirm licensing before production use.
  */
 
-import { getStock, stocks } from '../data/stocks'
-import type { MarketDataMode, StockQuote } from '../types/marketData'
+import { getStock, stocks, type Stock } from '../data/stocks'
+import { buildMockMarketQuote, buildMockMarketQuotes } from '../data/mockMarketQuotes'
+import type {
+  MarketDataBadgeLabel,
+  MarketDataMode,
+  MarketDataStatus,
+  MarketQuote,
+  StockQuote,
+} from '../types/marketData'
+import { MARKET_DATA_DISCLAIMER } from '../types/marketData'
+
+const REFRESH_TTL_MS = 60_000
+
+let quoteCache = new Map<string, MarketQuote>()
+let lastStatus: MarketDataStatus = createDefaultStatus()
+let lastRefreshAt = 0
+let refreshPromise: Promise<MarketQuote[]> | null = null
+
+function createDefaultStatus(): MarketDataStatus {
+  return {
+    mode: 'mock',
+    badge: 'Prototype Data',
+    sourceLabel: 'Prototype Data',
+    disclaimer: MARKET_DATA_DISCLAIMER,
+    isMock: true,
+    isLive: false,
+    isDelayed: true,
+    configurationError: null,
+    lastRefreshAt: null,
+    fellBackToMock: false,
+    quoteCount: 0,
+  }
+}
+
+function readEnvMode(): MarketDataMode {
+  const mode = import.meta.env.VITE_MARKET_DATA_MODE?.trim()
+  if (mode === 'experimental_dse' || mode === 'licensed') return mode
+  return 'mock'
+}
+
+function readEndpoint(): string {
+  return import.meta.env.VITE_DSE_MARKET_DATA_ENDPOINT?.trim() ?? ''
+}
+
+function readApiKey(): string {
+  return import.meta.env.VITE_DSE_MARKET_DATA_API_KEY?.trim() ?? ''
+}
 
 function interpolatePoints(points: number[], length: number): number[] {
   if (points.length === 0) return Array(length).fill(0)
@@ -20,26 +67,380 @@ function interpolatePoints(points: number[], length: number): number[] {
   })
 }
 
+function setCache(quotes: MarketQuote[], status: Partial<MarketDataStatus>) {
+  quoteCache = new Map(quotes.map((quote) => [quote.stockId, quote]))
+  lastRefreshAt = Date.now()
+  lastStatus = {
+    ...lastStatus,
+    ...status,
+    lastRefreshAt: new Date(lastRefreshAt).toISOString(),
+    quoteCount: quotes.length,
+  }
+}
+
+function resolveStockIdFromTicker(ticker: string): string | null {
+  const normalized = ticker.trim().toUpperCase()
+  const match = stocks.find((stock) => stock.ticker.toUpperCase() === normalized)
+  return match?.id ?? null
+}
+
+function asNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function normalizeRemoteRow(raw: Record<string, unknown>, defaults: Partial<MarketQuote>): MarketQuote | null {
+  const ticker =
+    asString(raw.ticker) ??
+    asString(raw.symbol) ??
+    asString(raw.Ticker) ??
+    asString(raw.Symbol)
+
+  if (!ticker) return null
+
+  const stockId = resolveStockIdFromTicker(ticker)
+  if (!stockId) return null
+
+  const stock = getStock(stockId)
+  if (!stock) return null
+
+  const lastPrice =
+    asNumber(raw.lastPrice) ??
+    asNumber(raw.price) ??
+    asNumber(raw.last) ??
+    asNumber(raw.close)
+
+  if (lastPrice === null || lastPrice <= 0) return null
+
+  const change = asNumber(raw.change) ?? 0
+  const changePercent =
+    asNumber(raw.changePercent) ??
+    asNumber(raw.changePct) ??
+    asNumber(raw.change_percent) ??
+    (lastPrice !== 0 ? (change / lastPrice) * 100 : 0)
+
+  const volume = asNumber(raw.volume) ?? 0
+  const tradeTime =
+    asString(raw.tradeTime) ??
+    asString(raw.asOf) ??
+    asString(raw.timestamp) ??
+    new Date().toISOString()
+
+  return {
+    stockId,
+    ticker: stock.ticker,
+    name: stock.name,
+    lastPrice,
+    change,
+    changePercent,
+    volume,
+    tradeTime,
+    source: defaults.source ?? 'remote',
+    sourceLabel: defaults.sourceLabel ?? 'Prototype Data',
+    isLive: defaults.isLive ?? false,
+    isDelayed: defaults.isDelayed ?? true,
+    isMock: defaults.isMock ?? false,
+    disclaimer: defaults.disclaimer ?? MARKET_DATA_DISCLAIMER,
+  }
+}
+
+function extractRemoteRows(payload: unknown): Record<string, unknown>[] {
+  if (Array.isArray(payload)) {
+    return payload.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === 'object')
+  }
+
+  if (payload && typeof payload === 'object') {
+    const record = payload as Record<string, unknown>
+    const candidates = [record.quotes, record.data, record.results, record.stocks]
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate)) {
+        return candidate.filter(
+          (row): row is Record<string, unknown> => Boolean(row) && typeof row === 'object',
+        )
+      }
+    }
+  }
+
+  return []
+}
+
+async function fetchRemoteQuotes(
+  endpoint: string,
+  headers: Record<string, string>,
+  defaults: Partial<MarketQuote>,
+): Promise<MarketQuote[]> {
+  const response = await fetch(endpoint, { headers })
+  if (!response.ok) {
+    throw new Error(`Market data request failed (${response.status})`)
+  }
+
+  const payload = (await response.json()) as unknown
+  const rows = extractRemoteRows(payload)
+  const quotes: MarketQuote[] = []
+
+  for (const row of rows) {
+    const normalized = normalizeRemoteRow(row, defaults)
+    if (normalized) quotes.push(normalized)
+  }
+
+  return quotes
+}
+
+function mergeWithMockFallback(remoteQuotes: MarketQuote[]): MarketQuote[] {
+  const merged = buildMockMarketQuotes()
+  const remoteById = new Map(remoteQuotes.map((quote) => [quote.stockId, quote]))
+
+  return merged.map((mockQuote) => remoteById.get(mockQuote.stockId) ?? mockQuote)
+}
+
+/**
+ * Experimental DSE adapter for local testing only. Confirm licensing before production use.
+ */
+async function fetchExperimentalQuotes(endpoint: string): Promise<MarketQuote[]> {
+  const remote = await fetchRemoteQuotes(endpoint, { Accept: 'application/json' }, {
+    source: 'experimental_dse',
+    sourceLabel: 'Experimental Feed',
+    isLive: false,
+    isDelayed: true,
+    isMock: false,
+    disclaimer: MARKET_DATA_DISCLAIMER,
+  })
+
+  if (remote.length === 0) {
+    throw new Error('Experimental feed returned no valid quotes')
+  }
+
+  return mergeWithMockFallback(remote)
+}
+
+async function fetchLicensedQuotes(endpoint: string, apiKey: string): Promise<MarketQuote[]> {
+  const remote = await fetchRemoteQuotes(
+    endpoint,
+    {
+      Accept: 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    {
+      source: 'licensed',
+      sourceLabel: 'Licensed Feed',
+      isLive: false,
+      isDelayed: true,
+      isMock: false,
+      disclaimer: 'Market data provided by licensed feed for prototype evaluation.',
+    },
+  )
+
+  if (remote.length === 0) {
+    throw new Error('Licensed feed returned no valid quotes')
+  }
+
+  return mergeWithMockFallback(remote)
+}
+
+function cacheMockStatus(mode: MarketDataMode, fellBackToMock = false): MarketDataStatus {
+  return {
+    mode,
+    badge: 'Prototype Data',
+    sourceLabel: 'Prototype Data',
+    disclaimer: MARKET_DATA_DISCLAIMER,
+    isMock: true,
+    isLive: false,
+    isDelayed: true,
+    configurationError: null,
+    lastRefreshAt: new Date().toISOString(),
+    fellBackToMock,
+    quoteCount: quoteCache.size,
+  }
+}
+
 export function getMarketDataMode(): MarketDataMode {
-  const mode = import.meta.env.VITE_MARKET_DATA_MODE
-  if (mode === 'experimental_dse' || mode === 'disabled') return mode
-  return 'mock'
+  return readEnvMode()
 }
 
 export function getMarketDataSourceLabel(): string {
-  const mode = getMarketDataMode()
-  const endpoint = import.meta.env.VITE_DSE_MARKET_DATA_ENDPOINT?.trim()
-  if (mode === 'experimental_dse' && endpoint) return 'DSE Feed'
-  return 'Prototype Data'
+  return lastStatus.sourceLabel
 }
 
 export function isMarketDataMock(): boolean {
-  return getMarketDataSourceLabel() === 'Prototype Data'
+  return lastStatus.isMock
+}
+
+export function getMarketDataStatus(): MarketDataStatus {
+  return lastStatus
+}
+
+export function getCachedMarketQuote(stockId: string): MarketQuote | null {
+  return quoteCache.get(stockId) ?? buildMockMarketQuote(stockId)
+}
+
+export async function getMarketQuote(stockId: string): Promise<MarketQuote | null> {
+  await refreshMarketQuotes()
+  return getCachedMarketQuote(stockId)
+}
+
+export async function getMarketQuotes(): Promise<MarketQuote[]> {
+  await refreshMarketQuotes()
+  return stocks
+    .map((stock) => getCachedMarketQuote(stock.id))
+    .filter((quote): quote is MarketQuote => quote !== null)
+}
+
+export async function refreshMarketQuotes(force = false): Promise<MarketQuote[]> {
+  if (!force && refreshPromise) return refreshPromise
+
+  const stale = Date.now() - lastRefreshAt > REFRESH_TTL_MS
+  if (!force && quoteCache.size > 0 && !stale) {
+    return Array.from(quoteCache.values())
+  }
+
+  refreshPromise = (async () => {
+    const mode = readEnvMode()
+    const endpoint = readEndpoint()
+    const apiKey = readApiKey()
+
+    if (mode === 'mock') {
+      const quotes = buildMockMarketQuotes()
+      setCache(quotes, cacheMockStatus('mock'))
+      return quotes
+    }
+
+    if (mode === 'licensed') {
+      if (!endpoint || !apiKey) {
+        const quotes = buildMockMarketQuotes()
+        setCache(quotes, {
+          mode: 'licensed',
+          badge: 'Data Unavailable',
+          sourceLabel: 'Prototype Data',
+          disclaimer: MARKET_DATA_DISCLAIMER,
+          isMock: true,
+          isLive: false,
+          isDelayed: true,
+          configurationError:
+            'Licensed feed requires VITE_DSE_MARKET_DATA_ENDPOINT and VITE_DSE_MARKET_DATA_API_KEY.',
+          fellBackToMock: true,
+          quoteCount: quotes.length,
+          lastRefreshAt: new Date().toISOString(),
+        })
+        return quotes
+      }
+
+      try {
+        const quotes = await fetchLicensedQuotes(endpoint, apiKey)
+        setCache(quotes, {
+          mode: 'licensed',
+          badge: 'Licensed Feed',
+          sourceLabel: 'Licensed Feed',
+          disclaimer: 'Market data provided by licensed feed for prototype evaluation.',
+          isMock: false,
+          isLive: false,
+          isDelayed: true,
+          configurationError: null,
+          fellBackToMock: false,
+          quoteCount: quotes.length,
+          lastRefreshAt: new Date().toISOString(),
+        })
+        return quotes
+      } catch {
+        const quotes = buildMockMarketQuotes()
+        setCache(quotes, {
+          mode: 'licensed',
+          badge: 'Delayed Data',
+          sourceLabel: 'Prototype Data',
+          disclaimer: MARKET_DATA_DISCLAIMER,
+          isMock: true,
+          isLive: false,
+          isDelayed: true,
+          configurationError: 'Licensed feed request failed. Showing prototype data.',
+          fellBackToMock: true,
+          quoteCount: quotes.length,
+          lastRefreshAt: new Date().toISOString(),
+        })
+        return quotes
+      }
+    }
+
+    if (!endpoint) {
+      const quotes = buildMockMarketQuotes()
+      setCache(quotes, {
+        mode: 'experimental_dse',
+        badge: 'Prototype Data',
+        sourceLabel: 'Prototype Data',
+        disclaimer: MARKET_DATA_DISCLAIMER,
+        isMock: true,
+        isLive: false,
+        isDelayed: true,
+        configurationError: null,
+        fellBackToMock: true,
+        quoteCount: quotes.length,
+        lastRefreshAt: new Date().toISOString(),
+      })
+      return quotes
+    }
+
+    try {
+      const quotes = await fetchExperimentalQuotes(endpoint)
+      setCache(quotes, {
+        mode: 'experimental_dse',
+        badge: 'Experimental Feed',
+        sourceLabel: 'Experimental Feed',
+        disclaimer: MARKET_DATA_DISCLAIMER,
+        isMock: false,
+        isLive: false,
+        isDelayed: true,
+        configurationError: null,
+        fellBackToMock: false,
+        quoteCount: quotes.length,
+        lastRefreshAt: new Date().toISOString(),
+      })
+      return quotes
+    } catch {
+      const quotes = buildMockMarketQuotes()
+      setCache(quotes, {
+        mode: 'experimental_dse',
+        badge: 'Prototype Data',
+        sourceLabel: 'Prototype Data',
+        disclaimer: MARKET_DATA_DISCLAIMER,
+        isMock: true,
+        isLive: false,
+        isDelayed: true,
+        configurationError: 'Experimental feed request failed. Showing prototype data.',
+        fellBackToMock: true,
+        quoteCount: quotes.length,
+        lastRefreshAt: new Date().toISOString(),
+      })
+      return quotes
+    }
+  })()
+
+  try {
+    return await refreshPromise
+  } finally {
+    refreshPromise = null
+  }
+}
+
+export function applyQuoteToStock(stock: Stock): Stock {
+  const quote = getCachedMarketQuote(stock.id)
+  if (!quote) return stock
+
+  return {
+    ...stock,
+    price: quote.lastPrice,
+    change: quote.change,
+    changePct: quote.changePercent,
+  }
 }
 
 export function getStockPrice(stockId: string): number {
-  if (getMarketDataMode() === 'disabled') return 0
-  return getStock(stockId)?.price ?? 0
+  return getCachedMarketQuote(stockId)?.lastPrice ?? getStock(stockId)?.price ?? 0
 }
 
 export function getStockPriceOnDayIndex(
@@ -50,26 +451,36 @@ export function getStockPriceOnDayIndex(
   const stock = getStock(stockId)
   if (!stock) return 0
   const prices = interpolatePoints(stock.chartPoints, historyLength)
-  return prices[dayIndex] ?? stock.price
+  return prices[dayIndex] ?? getStockPrice(stockId)
 }
 
 export function getStockQuote(stockId: string): StockQuote | null {
-  const stock = getStock(stockId)
-  if (!stock) return null
+  const quote = getCachedMarketQuote(stockId)
+  if (!quote) return null
 
-  const source = getMarketDataSourceLabel()
   return {
-    stockId: stock.id,
-    ticker: stock.ticker,
-    price: stock.price,
-    change: stock.change,
-    changePct: stock.changePct,
-    source,
-    asOf: new Date().toISOString(),
-    isMock: source === 'Prototype Data',
+    stockId: quote.stockId,
+    ticker: quote.ticker,
+    price: quote.lastPrice,
+    change: quote.change,
+    changePct: quote.changePercent,
+    source: quote.sourceLabel,
+    asOf: quote.tradeTime,
+    isMock: quote.isMock,
   }
 }
 
 export function listStockIds(): string[] {
-  return stocks.map((s) => s.id)
+  return stocks.map((stock) => stock.id)
 }
+
+export function getMarketDataBadgeLabel(): MarketDataBadgeLabel {
+  return lastStatus.badge
+}
+
+export function isExperimentalMarketDataMode(): boolean {
+  return readEnvMode() === 'experimental_dse'
+}
+
+// Warm cache synchronously for first paint — replaced on first refresh.
+setCache(buildMockMarketQuotes(), cacheMockStatus('mock'))

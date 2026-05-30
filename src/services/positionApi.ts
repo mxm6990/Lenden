@@ -4,6 +4,7 @@
 
 import type { UserPosition } from '../types/position'
 import { getPortfolioBundle } from './portfolioApi'
+import { getCachedMarketQuote } from './marketDataProvider'
 import type { EnrichedHolding } from '../data/stocks'
 
 const MOCK_USER_ID = 'usr_demo_001'
@@ -18,8 +19,11 @@ function buildPositionFromHolding(
   totalValue: number,
   userId: string,
 ): UserPosition {
-  const previousClose = holding.stock.price - holding.stock.change
-  const todayAmount = holding.shares * holding.stock.change
+  const quote = getCachedMarketQuote(holding.stockId)
+  const change = quote?.change ?? holding.stock.change
+  const lastPrice = quote?.lastPrice ?? holding.currentValue / Math.max(holding.shares, 1)
+  const previousClose = lastPrice - change
+  const todayAmount = holding.shares * change
   const costBasis = holding.shares * previousClose
   const todayPct = costBasis > 0 ? (todayAmount / costBasis) * 100 : 0
   const portfolioWeightPct = totalValue > 0 ? (holding.currentValue / totalValue) * 100 : 0

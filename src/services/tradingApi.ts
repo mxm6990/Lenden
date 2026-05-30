@@ -10,6 +10,7 @@ import { calculateBuyingPowerAfterOrder } from '../lib/portfolioCalculations'
 import { isDemoModeActive } from '../lib/demoMode'
 import { getAuthenticatedUserId } from '../lib/supabaseAuth'
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabase'
+import { getStockPrice, refreshMarketQuotes } from './marketDataProvider'
 import type { SubmitMockBuyRpcResult, SubmitMockSellRpcResult } from '../types/supabase'
 import type { MockOrderReceipt } from '../types/trading'
 import { appendAuditLog } from './auditApi'
@@ -189,7 +190,7 @@ async function submitMockBuyViaRpc(
   if (!supabase) throw new Error('Supabase client unavailable')
 
   const feeBdt = computeOrderFee(orderInput.amountBdt)
-  const filledShares = computeFilledShares(orderInput.amountBdt, stock.price)
+  const filledShares = computeFilledShares(orderInput.amountBdt, getStockPrice(stock.id))
   const executionPrice = computeExecutionPrice(orderInput.amountBdt, filledShares)
 
   if (filledShares <= 0) {
@@ -257,7 +258,7 @@ async function submitDemoMockOrder(
   stock: NonNullable<ReturnType<typeof getStock>>,
 ): Promise<{ order: SubmitOrderResponse; receipt: MockOrderReceipt }> {
   const feeBdt = computeOrderFee(orderInput.amountBdt)
-  const filledShares = computeFilledShares(orderInput.amountBdt, stock.price)
+  const filledShares = computeFilledShares(orderInput.amountBdt, getStockPrice(stock.id))
   const executionPrice = computeExecutionPrice(orderInput.amountBdt, filledShares)
   const orderId = `ord_mock_${Date.now()}`
   const buyingPowerBefore = 8450
@@ -356,7 +357,7 @@ async function submitMockSellViaRpc(
   const supabase = getSupabaseClient()
   if (!supabase) throw new Error('Supabase client unavailable')
 
-  const executionPrice = stock.price
+  const executionPrice = getStockPrice(stock.id)
   const feeBdt = computeOrderFee(Math.round(shares * executionPrice * 100) / 100)
   const buyingPowerBefore = await fetchBuyingPowerAvailable(userId)
 
@@ -421,7 +422,7 @@ async function submitDemoMockSell(
   stock: NonNullable<ReturnType<typeof getStock>>,
   avgCost: number,
 ): Promise<{ order: SubmitOrderResponse; receipt: MockOrderReceipt }> {
-  const executionPrice = stock.price
+  const executionPrice = getStockPrice(stock.id)
   const { grossProceeds, feeBdt, netProceeds } = computeSellProceeds(shares, executionPrice)
   const costBasis = Math.round(shares * avgCost * 100) / 100
   const realizedGainLoss = Math.round((netProceeds - costBasis) * 100) / 100
@@ -481,6 +482,8 @@ export async function previewSellOrder(
     return delay({ ok: false, reason: 'preview_failed' })
   }
 
+  await refreshMarketQuotes()
+
   const stock = getStock(stockId)
   if (!stock) return delay({ ok: false, reason: 'preview_failed' })
 
@@ -523,7 +526,7 @@ export async function previewSellOrder(
     })
   }
 
-  const executionPrice = stock.price
+  const executionPrice = getStockPrice(stock.id)
   const { grossProceeds, feeBdt, netProceeds } = computeSellProceeds(sharesToSell, executionPrice)
   const costBasis = Math.round(sharesToSell * holding.avgCost * 100) / 100
   const realizedGainLoss = Math.round((netProceeds - costBasis) * 100) / 100
@@ -575,6 +578,8 @@ export async function submitMockSell(
   if (simulateOrderRejection) {
     return delay({ ok: false, reason: 'order_rejected' })
   }
+
+  await refreshMarketQuotes()
 
   const stock = getStock(stockId)
   if (!stock) return delay({ ok: false, reason: 'order_rejected' })
@@ -677,6 +682,8 @@ export async function previewOrder(
     return delay({ ok: false, reason: 'preview_failed' })
   }
 
+  await refreshMarketQuotes()
+
   const stock = getStock(orderInput.stockId)
   if (!stock) return delay({ ok: false, reason: 'preview_failed' })
 
@@ -702,7 +709,7 @@ export async function previewOrder(
   }
 
   const feeBdt = computeOrderFee(orderInput.amountBdt)
-  const estimatedShares = computeFilledShares(orderInput.amountBdt, stock.price)
+  const estimatedShares = computeFilledShares(orderInput.amountBdt, getStockPrice(stock.id))
   const executionPrice = computeExecutionPrice(orderInput.amountBdt, estimatedShares)
 
   if (estimatedShares <= 0) {
@@ -751,6 +758,8 @@ export async function submitMockOrder(
   if (simulateOrderRejection) {
     return delay({ ok: false, reason: 'order_rejected' })
   }
+
+  await refreshMarketQuotes()
 
   const stock = getStock(orderInput.stockId)
   if (!stock) return delay({ ok: false, reason: 'order_rejected' })

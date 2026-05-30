@@ -11,6 +11,7 @@ import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { StockHistoryChart } from '../components/charts/StockHistoryChart'
 import { ScreenHeader } from '../components/layout/ScreenHeader'
+import { BetaScreenLabels, MarketDataNotice, PrototypeBanner } from '../components/trust/ComplianceCopy'
 
 const ACTION_BAR_BUTTON_CLASS = 'h-11 w-full'
 
@@ -54,8 +55,16 @@ function SellActionSlot({
 }
 
 export function StockDetailScreen() {
-  const { selectedStockId, closeOverlay, startBuy, startSell, watchlist, toggleWatchlist, portfolioVersion } =
-    useApp()
+  const {
+    selectedStockId,
+    closeOverlay,
+    startBuy,
+    startSell,
+    watchlist,
+    toggleWatchlist,
+    portfolioVersion,
+    isDemo,
+  } = useApp()
   const stock = selectedStockId ? getStock(selectedStockId) : null
   const [quote, setQuote] = useState<SecurityQuote | null>(null)
   const [position, setPosition] = useState<UserPosition | null>(null)
@@ -133,6 +142,9 @@ export function StockDetailScreen() {
     <>
       <ScreenHeader title={stock.ticker} subtitle={stock.name} onBack={closeOverlay} />
       <div className="px-5 pb-28">
+        <PrototypeBanner className="mb-4" />
+        <BetaScreenLabels isDemo={isDemo} className="mb-3" />
+        <MarketDataNotice className="mb-4" />
         <div className="mb-4">
           <p className="text-3xl font-bold tabular-nums text-white">
             {formatBDT(displayQuote.lastPrice)}
