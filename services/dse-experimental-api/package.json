@@ -1,0 +1,20 @@
+{
+  "name": "lenden-dse-experimental-api",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Unofficial experimental DSE quote API for Lenden closed beta (Dhaka-Stock-Exchange compatible routes).",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "node-html-parser": "^6.1.13"
+  }
+}

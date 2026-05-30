@@ -1,0 +1,15 @@
+# Render Blueprint — experimental unofficial DSE API for Lenden closed beta.
+# Deploy: Render Dashboard → New → Blueprint → connect this repo → set rootDir if needed.
+
+services:
+  - type: web
+    name: lenden-dse-experimental-api
+    runtime: node
+    rootDir: services/dse-experimental-api
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
