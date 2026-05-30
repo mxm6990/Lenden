@@ -77,7 +77,7 @@ export function HomeScreen() {
   return (
     <>
       <CompactAppHeader />
-      <div className="px-5 pb-4">
+      <div className="px-5 pb-4 screen-content-padding">
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
           <PrototypeBanner className="mb-3" />
           <MarketDataNotice className="mb-4" />

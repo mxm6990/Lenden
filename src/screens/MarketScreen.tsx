@@ -54,7 +54,7 @@ export function MarketScreen() {
   }, [query])
 
   return (
-    <div className="pb-28">
+    <div className="screen-content-padding">
       <CompactAppHeader title="Market" subtitle="Dhaka Stock Exchange" />
       <MarketFeedBanner />
 
@@ -91,7 +91,7 @@ export function MarketScreen() {
 
           <div
             ref={searchAnchorRef}
-            className="sticky top-[5.5rem] z-20 border-b border-white/5 bg-lenden-black/95 px-5 py-2.5 backdrop-blur-xl"
+            className="sticky top-[calc(var(--app-header-height)+0.25rem)] z-20 border-b border-white/5 bg-lenden-black/95 px-5 py-2.5 backdrop-blur-xl"
           >
             <div className="relative">
               <Search className="absolute top-1/2 left-4 h-4 w-4 -translate-y-1/2 text-lenden-muted" />

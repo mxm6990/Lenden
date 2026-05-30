@@ -1,6 +1,10 @@
 export type StockHistoryRange = '1D' | '1W' | '1M' | '6M' | '1Y'
 
-export type StockHistorySourceLabel = 'Historical data' | 'Session estimate' | 'Prototype history'
+export type StockHistorySourceLabel =
+  | 'Historical data'
+  | 'Session estimate'
+  | 'Prototype estimate'
+  | 'Prototype history'
 
 export interface StockHistoryPoint {
   ticker: string
@@ -25,4 +29,6 @@ export interface StockHistorySummary {
   sourceLabel: StockHistorySourceLabel
   sourceDescription: string
   isMock: boolean
+  hasRealHistory: boolean
+  enabledRanges: StockHistoryRange[]
 }

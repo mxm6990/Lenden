@@ -18,7 +18,7 @@ function delay<T>(value: T): Promise<T> {
 
 export async function getStockHistory(
   ticker: string,
-  range: StockHistoryRange,
+  _range: StockHistoryRange,
 ): Promise<StockHistorySummary> {
   await refreshMarketQuotes()
 
@@ -28,34 +28,21 @@ export async function getStockHistory(
   const lastPrice = quote?.lastPrice ?? stock?.price ?? 0
 
   if (lastPrice <= 0) {
-    return delay(
-      buildPrototypeHistorySummary(normalized, 100, range),
-    )
+    return delay(buildPrototypeHistorySummary(normalized, 100, '1D'))
   }
 
   const mode = getMarketDataMode()
   const endpoint = import.meta.env.VITE_DSE_MARKET_DATA_ENDPOINT?.trim()
 
   if (mode === 'licensed' && endpoint) {
-    // Future: fetch(`${endpoint}/history?ticker=...&range=...`)
+    // Future: fetch(`${endpoint}/history?ticker=...&range=...`) and return hasRealHistory: true
   }
 
   if (quote && !quote.isMock && mode === 'experimental_dse') {
-    if (range === '1D') {
-      return delay(buildSessionEstimateSummary(normalized, quote, range))
-    }
-
-    const prototype = buildPrototypeHistorySummary(normalized, lastPrice, range)
-    return delay({
-      ...prototype,
-      sourceLabel: 'Session estimate',
-      sourceDescription:
-        'Longer ranges use a prototype curve seeded from the latest DSE quote until licensed history is available.',
-      isMock: true,
-    })
+    return delay(buildSessionEstimateSummary(normalized, quote, '1D'))
   }
 
-  return delay(buildPrototypeHistorySummary(normalized, lastPrice, range))
+  return delay(buildPrototypeHistorySummary(normalized, lastPrice, '1D'))
 }
 
 export type { StockHistoryRange, StockHistorySummary }

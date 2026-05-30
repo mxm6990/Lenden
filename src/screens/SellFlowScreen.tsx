@@ -170,7 +170,7 @@ export function SellFlowScreen() {
 
   if (sellStep === 'success' && receipt) {
     return (
-      <div className="px-5 pb-8 pt-4">
+      <div className="px-5 pt-4 screen-overlay-padding">
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
           <div className="mb-6 flex flex-col items-center text-center">
             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-lenden-mint/15">
@@ -222,7 +222,7 @@ export function SellFlowScreen() {
         title={`Sell ${stock.ticker}`}
         onBack={sellStep === 'confirm' ? () => setSellStep('amount') : closeOverlay}
       />
-      <div className="px-5 pb-8">
+      <div className="px-5 screen-overlay-padding">
         <PrototypeBanner className="mb-4" />
         <BetaScreenLabels isDemo={isDemo} className="mb-3" />
 

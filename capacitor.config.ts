@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli'
 
 const config: CapacitorConfig = {
   appId: 'app.lenden.invest',
-  appName: 'Lenden',
+  appName: 'LenDen',
   webDir: 'dist',
   ios: {
     contentInset: 'automatic',

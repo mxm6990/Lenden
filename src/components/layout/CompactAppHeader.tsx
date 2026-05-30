@@ -20,8 +20,10 @@ export function CompactAppHeader({
   className = '',
 }: CompactAppHeaderProps) {
   return (
-    <header className={`sticky top-0 z-30 border-b border-white/5 bg-lenden-black/95 backdrop-blur-xl ${className}`}>
-      <div className="flex items-center justify-between gap-3 px-5 pt-2 pb-2.5">
+    <header
+      className={`sticky top-0 z-30 min-h-[var(--app-header-height)] border-b border-white/5 bg-lenden-black/95 backdrop-blur-xl ${className}`}
+    >
+      <div className="flex min-h-[2.75rem] items-center justify-between gap-3 px-5 pt-3 pb-2">
         <div className="flex min-w-0 items-center gap-2.5">
           {showLogo && <LendenLogo variant="compact" className="shrink-0" />}
           {showBetaPill && <PaperTradingBetaPill />}
@@ -29,7 +31,7 @@ export function CompactAppHeader({
         {right}
       </div>
       {title && (
-        <div className="px-5 pb-2.5">
+        <div className="px-5 pb-3">
           <h1 className="truncate text-lg font-bold text-white">{title}</h1>
           {subtitle && <p className="text-xs text-lenden-muted">{subtitle}</p>}
         </div>

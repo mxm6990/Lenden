@@ -16,7 +16,7 @@ export function AppShell({ children, showNav = true }: AppShellProps) {
   const devMarketOverride = isDevMarketOverrideActive()
 
   return (
-    <div className={`${shellWidth} flex h-svh max-h-svh flex-col overflow-hidden bg-lenden-black`}>
+    <div className={`${shellWidth} flex min-h-dvh flex-col bg-lenden-black`}>
       {devMarketOverride && (
         <div className="shrink-0 border-b border-sky-400/20 bg-sky-500/10 px-4 py-2 text-center">
           <DevMarketOverrideBadge />
@@ -37,8 +37,8 @@ export function AppShell({ children, showNav = true }: AppShellProps) {
 
 export function AuthShell({ children }: { children: ReactNode }) {
   return (
-    <div className={`${shellWidth} h-svh max-h-svh overflow-hidden bg-lenden-black`}>
-      <div className="flex h-full min-h-0 flex-col">{children}</div>
+    <div className={`${shellWidth} min-h-dvh bg-lenden-black`}>
+      <div className="flex min-h-dvh flex-col">{children}</div>
     </div>
   )
 }

@@ -1,14 +1,13 @@
-import { Bookmark, BookmarkCheck } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { formatBDT, type Stock } from '../data/stocks'
-import { matchesStockId } from '../lib/securityListing'
 import { fetchSecurityQuote, formatMarketCap, formatRatio, formatVolume } from '../services/securityApi'
 import { resolveStockForTrading } from '../services/securityCatalogApi'
 import { fetchUserPosition } from '../services/positionApi'
 import type { SecurityQuote } from '../types/security'
 import type { UserPosition } from '../types/position'
 import { YourPositionSection } from '../components/portfolio/YourPositionSection'
+import { WatchlistToggleButton } from '../components/market/WatchlistToggleButton'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { StockHistoryChart } from '../components/charts/StockHistoryChart'
@@ -16,7 +15,7 @@ import { ScreenHeader } from '../components/layout/ScreenHeader'
 import { BetaScreenLabels, MarketDataNotice, PrototypeBanner } from '../components/trust/ComplianceCopy'
 import { LoadingSkeleton, TrustState } from '../components/trust/TrustState'
 
-const ACTION_BAR_BUTTON_CLASS = 'h-11 w-full'
+const ACTION_BAR_BUTTON_CLASS = 'h-11 min-h-[44px]'
 
 function QuoteMetric({ label, value }: { label: string; value: string }) {
   return (
@@ -42,12 +41,12 @@ function SellActionSlot({
         <button
           type="button"
           disabled
-          className={`inline-flex ${ACTION_BAR_BUTTON_CLASS} items-center justify-center rounded-2xl border border-white/10 bg-lenden-surface/60 px-3 text-xs font-semibold text-lenden-muted`}
+          className={`inline-flex w-full ${ACTION_BAR_BUTTON_CLASS} items-center justify-center rounded-2xl border border-white/10 bg-lenden-surface/60 px-3 text-xs font-semibold text-lenden-muted`}
         >
           Checking position…
         </button>
       ) : canSell ? (
-        <Button variant="outline" size="md" className={ACTION_BAR_BUTTON_CLASS} onClick={onSell}>
+        <Button variant="outline" size="md" className={`w-full ${ACTION_BAR_BUTTON_CLASS}`} onClick={onSell}>
           Sell
         </Button>
       ) : (
@@ -63,8 +62,6 @@ export function StockDetailScreen() {
     closeOverlay,
     startBuy,
     startSell,
-    watchlist,
-    toggleWatchlist,
     portfolioVersion,
     isDemo,
   } = useApp()
@@ -140,7 +137,7 @@ export function StockDetailScreen() {
     return (
       <>
         <ScreenHeader title="Loading…" subtitle="Security details" onBack={closeOverlay} />
-        <div className="px-5 pb-28">
+        <div className="px-5 screen-overlay-padding">
           <LoadingSkeleton rows={6} />
         </div>
       </>
@@ -151,7 +148,7 @@ export function StockDetailScreen() {
     return (
       <>
         <ScreenHeader title="Security" subtitle="Not found" onBack={closeOverlay} />
-        <div className="px-5 pb-28">
+        <div className="px-5 screen-overlay-padding">
           <TrustState
             variant="empty"
             title="Security not found"
@@ -162,7 +159,6 @@ export function StockDetailScreen() {
     )
   }
 
-  const inWatchlist = watchlist.some((id) => matchesStockId(id, stock.id))
   const displayQuote = quote ?? {
     lastPrice: stock.price,
     change: stock.change,
@@ -188,7 +184,7 @@ export function StockDetailScreen() {
   return (
     <>
       <ScreenHeader title={stock.ticker} subtitle={stock.name} onBack={closeOverlay} />
-      <div className="px-5 pb-28">
+      <div className="px-5 screen-overlay-padding">
         <PrototypeBanner className="mb-4" />
         <BetaScreenLabels isDemo={isDemo} className="mb-3" />
         <MarketDataNotice className="mb-4" />
@@ -231,40 +227,26 @@ export function StockDetailScreen() {
           <p className="mb-2 text-sm font-semibold text-white">About</p>
           <p className="text-sm leading-relaxed text-lenden-muted">{stock.about}</p>
         </div>
+      </div>
 
-        <div className="fixed right-0 bottom-0 left-0 mx-auto max-w-[430px] border-t border-white/5 bg-lenden-black/95 px-5 pt-3 pb-8 backdrop-blur-xl">
-          <div className="flex items-stretch gap-3">
-            <Button
-              variant="secondary"
-              size="md"
-              className={`min-w-0 flex-1 ${ACTION_BAR_BUTTON_CLASS}`}
-              onClick={() => toggleWatchlist(stock.id)}
-            >
-              {inWatchlist ? (
-                <>
-                  <BookmarkCheck className="h-4 w-4 text-lenden-mint" />
-                  Watching
-                </>
-              ) : (
-                <>
-                  <Bookmark className="h-4 w-4" />
-                  Watchlist
-                </>
-              )}
-            </Button>
-            <SellActionSlot
-              positionLoading={positionLoading}
-              canSell={canSell}
-              onSell={() => startSell(stock.id)}
-            />
-            <Button
-              size="md"
-              className={`min-w-0 flex-[1.4] ${ACTION_BAR_BUTTON_CLASS}`}
-              onClick={() => startBuy(stock.id)}
-            >
-              Buy {stock.ticker}
-            </Button>
-          </div>
+      <div
+        className="fixed right-0 bottom-0 left-0 z-40 mx-auto max-w-[430px] border-t border-white/5 bg-lenden-black/95 px-5 pt-3 backdrop-blur-xl"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' }}
+      >
+        <div className="flex items-center gap-3">
+          <WatchlistToggleButton ticker={stock.ticker} />
+          <SellActionSlot
+            positionLoading={positionLoading}
+            canSell={canSell}
+            onSell={() => startSell(stock.ticker)}
+          />
+          <Button
+            size="md"
+            className={`min-w-0 flex-[1.4] w-full ${ACTION_BAR_BUTTON_CLASS}`}
+            onClick={() => startBuy(stock.ticker)}
+          >
+            Buy {stock.ticker}
+          </Button>
         </div>
       </div>
     </>

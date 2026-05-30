@@ -1,5 +1,10 @@
 import type { MarketQuote } from '../types/marketData'
-import type { StockHistoryPoint, StockHistoryRange, StockHistorySourceLabel, StockHistorySummary } from '../types/stockHistory'
+import type {
+  StockHistoryPoint,
+  StockHistoryRange,
+  StockHistorySourceLabel,
+  StockHistorySummary,
+} from '../types/stockHistory'
 import { RANGE_CONFIG } from '../data/mockStockHistory'
 import { buildMockStockHistory } from '../data/mockStockHistory'
 
@@ -11,6 +16,9 @@ export interface SessionQuoteFields {
   dayLow: number
   tradeTime: string
 }
+
+const ALL_RANGES: StockHistoryRange[] = ['1D', '1W', '1M', '6M', '1Y']
+const ESTIMATE_RANGES: StockHistoryRange[] = ['1D']
 
 export function deriveSessionQuoteFields(quote: MarketQuote): SessionQuoteFields {
   const previousClose = quote.previousClose ?? quote.lastPrice - quote.change
@@ -89,6 +97,8 @@ export function summarizeHistory(
   sourceLabel: StockHistorySourceLabel,
   sourceDescription: string,
   isMock: boolean,
+  hasRealHistory: boolean,
+  enabledRanges: StockHistoryRange[] = hasRealHistory ? ALL_RANGES : ESTIMATE_RANGES,
 ): StockHistorySummary {
   const prices = points.map((point) => point.price)
 
@@ -105,6 +115,8 @@ export function summarizeHistory(
     sourceLabel,
     sourceDescription,
     isMock,
+    hasRealHistory,
+    enabledRanges,
   }
 }
 
@@ -113,14 +125,16 @@ export function buildPrototypeHistorySummary(
   basePrice: number,
   range: StockHistoryRange,
 ): StockHistorySummary {
-  const points = buildMockStockHistory(ticker, basePrice, range, 'Prototype history')
+  const points = buildMockStockHistory(ticker, basePrice, range, 'Prototype estimate')
   return summarizeHistory(
     ticker,
     range,
     points,
-    'Prototype history',
-    'Prototype chart generated for demonstration. Not licensed historical data.',
+    'Prototype estimate',
+    'Prototype curve — not real historical data.',
     true,
+    false,
+    ESTIMATE_RANGES,
   )
 }
 
@@ -136,7 +150,9 @@ export function buildSessionEstimateSummary(
     range,
     points,
     'Session estimate',
-    'Session estimate from latest DSE quote. Not full historical accuracy.',
+    'Estimated 1D path from latest DSE quote. Built from YCP, high, low, and last price. Not full historical accuracy.',
     false,
+    false,
+    ESTIMATE_RANGES,
   )
 }

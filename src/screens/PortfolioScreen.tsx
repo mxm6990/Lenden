@@ -51,7 +51,7 @@ export function PortfolioScreen() {
   return (
     <>
       <CompactAppHeader title="Portfolio" subtitle="Your DSE holdings" />
-      <div className="px-5 pb-4">
+      <div className="px-5 pb-4 screen-content-padding">
         <PrototypeBanner className="mb-3" />
         {portfolioError && (
           <TrustState

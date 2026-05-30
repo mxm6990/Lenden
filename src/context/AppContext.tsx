@@ -30,6 +30,12 @@ import {
   subscribeToAuthChanges,
 } from '../services/authApi'
 import { isSupabaseConfigured } from '../lib/supabase'
+import {
+  canonicalWatchlistTicker,
+  isWatchlistMember,
+  withWatchlistMember,
+  withoutWatchlistMember,
+} from '../lib/watchlistState'
 
 interface AppState {
   authScreen: AuthScreen
@@ -68,6 +74,8 @@ interface AppContextValue extends AppState {
   setSellStep: (step: BuyStep) => void
   setBuyAmount: (amount: number) => void
   toggleWatchlist: (stockId: string) => void
+  isInWatchlist: (stockId: string) => boolean
+  isWatchlistPersisting: (stockId: string) => boolean
   refreshPortfolio: () => void
   refreshProfile: () => void
   refreshAllUserData: () => Promise<void>
@@ -113,6 +121,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [portfolioVersion, setPortfolioVersion] = useState(0)
   const [profileVersion, setProfileVersion] = useState(0)
   const [dataRefreshing, setDataRefreshing] = useState(false)
+  const [watchlistPersisting, setWatchlistPersisting] = useState<string[]>([])
   const watchlistPersistInFlight = useRef(new Set<string>())
   const refreshInFlight = useRef<Promise<void> | null>(null)
 
@@ -123,6 +132,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const refreshProfile = useCallback(() => {
     setProfileVersion((v) => v + 1)
   }, [])
+
+  const isInWatchlist = useCallback(
+    (stockId: string) => isWatchlistMember(watchlist, stockId),
+    [watchlist],
+  )
+
+  const isWatchlistPersisting = useCallback(
+    (stockId: string) => watchlistPersisting.includes(canonicalWatchlistTicker(stockId)),
+    [watchlistPersisting],
+  )
 
   const refreshAllUserData = useCallback(async () => {
     if (refreshInFlight.current) {
@@ -321,22 +340,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSellStep,
         setBuyAmount,
         toggleWatchlist: (stockId) => {
-          if (watchlistPersistInFlight.current.has(stockId)) return
+          const canonical = canonicalWatchlistTicker(stockId)
+          if (watchlistPersistInFlight.current.has(canonical)) return
 
-          const removing = watchlist.includes(stockId)
+          const removing = isWatchlistMember(watchlist, canonical)
+          const previous = [...watchlist]
+
           setWatchlist((list) =>
-            removing ? list.filter((id) => id !== stockId) : [...list, stockId],
+            removing ? withoutWatchlistMember(list, canonical) : withWatchlistMember(list, canonical),
           )
 
           if (isDemo) return
 
-          watchlistPersistInFlight.current.add(stockId)
-          void (removing ? removeWatchlistStock(stockId) : addWatchlistStock(stockId)).finally(
-            () => {
-              watchlistPersistInFlight.current.delete(stockId)
-            },
+          watchlistPersistInFlight.current.add(canonical)
+          setWatchlistPersisting((pending) =>
+            pending.includes(canonical) ? pending : [...pending, canonical],
           )
+
+          void (async () => {
+            try {
+              if (removing) {
+                await removeWatchlistStock(canonical)
+              } else {
+                await addWatchlistStock(canonical)
+              }
+              const updated = await getWatchlistStockIds()
+              setWatchlist(updated.map((id) => canonicalWatchlistTicker(id)))
+            } catch {
+              setWatchlist(previous)
+            } finally {
+              watchlistPersistInFlight.current.delete(canonical)
+              setWatchlistPersisting((pending) => pending.filter((id) => id !== canonical))
+            }
+          })()
         },
+        isInWatchlist,
+        isWatchlistPersisting,
         refreshPortfolio,
         refreshProfile,
         refreshAllUserData,
