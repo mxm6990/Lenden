@@ -4,6 +4,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1'
+import { findCatalogEntry } from '../_shared/lendenCatalog.ts'
 import { extractDseRows } from '../_shared/normalizeQuotes.ts'
 
 const corsHeaders = {
@@ -12,6 +13,11 @@ const corsHeaders = {
 }
 
 interface CompanyListEntry {
+  TRADING_CODE?: string
+  trading_code?: string
+  ticker?: string
+  COMPANY_NAME?: string
+  company_name?: string
   name?: string
 }
 
@@ -39,6 +45,36 @@ function normalizeTicker(value: unknown): string | null {
   return ticker.length > 0 ? ticker : null
 }
 
+function asString(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function deriveTicker(row: Record<string, unknown>): string | null {
+  return normalizeTicker(
+    row.TRADING_CODE ?? row.trading_code ?? row.ticker ?? row.Ticker ?? row.SYMBOL ?? row.symbol,
+  )
+}
+
+function deriveCompanyName(
+  row: Record<string, unknown>,
+  ticker: string,
+  companyNames: Map<string, string>,
+): string {
+  const catalogEntry = findCatalogEntry({ ticker })
+  return (
+    catalogEntry?.name ??
+    companyNames.get(ticker) ??
+    asString(row.COMPANY_NAME) ??
+    asString(row.company_name) ??
+    asString(row.name) ??
+    asString(row.COMPANY) ??
+    asString(row.company) ??
+    ticker
+  )
+}
+
 async function fetchUpstream(path: string): Promise<unknown> {
   const baseUrl = Deno.env.get('DSE_EXPERIMENTAL_BASE_URL')?.replace(/\/$/, '')
   if (!baseUrl) throw new Error('DSE_EXPERIMENTAL_BASE_URL is not configured.')
@@ -59,9 +95,17 @@ async function loadCompanyNames(): Promise<Map<string, string>> {
 
     for (const entry of payload) {
       if (!entry || typeof entry !== 'object') continue
-      const record = entry as CompanyListEntry & { id?: number }
-      const ticker = normalizeTicker(record.name)
-      if (ticker) names.set(ticker, ticker)
+      const record = entry as CompanyListEntry
+      const ticker = normalizeTicker(record.TRADING_CODE ?? record.trading_code ?? record.ticker)
+      if (!ticker) continue
+
+      const companyName =
+        asString(record.COMPANY_NAME) ??
+        asString(record.company_name) ??
+        asString(record.name) ??
+        ticker
+
+      names.set(ticker, companyName)
     }
   } catch (error) {
     console.warn('company_list unavailable', error)
@@ -86,6 +130,9 @@ Deno.serve(async (req) => {
       inserted: 0,
       updated: 0,
       skipped: 0,
+      totalProcessed: 0,
+      firstFiveSkippedReasons: [],
+      sampleAcceptedRows: [],
       message: 'Set DSE_MARKET_DATA_MODE=experimental_dse to run sync.',
     })
   }
@@ -101,60 +148,71 @@ Deno.serve(async (req) => {
     let inserted = 0
     let updated = 0
     let skipped = 0
+    const firstFiveSkippedReasons: string[] = []
+    const sampleAcceptedRows: Array<{ ticker: string; company_name: string }> = []
+
+    const recordSkip = (reason: string) => {
+      skipped++
+      if (firstFiveSkippedReasons.length < 5) {
+        firstFiveSkippedReasons.push(reason)
+      }
+    }
 
     for (const row of rows) {
-      const ticker = normalizeTicker(row.TRADING_CODE ?? row.trading_code ?? row.ticker)
+      const ticker = deriveTicker(row)
       if (!ticker) {
-        skipped++
+        recordSkip('missing_ticker')
         continue
       }
 
-      const companyName = companyNames.get(ticker) ?? ticker
+      const companyName = deriveCompanyName(row, ticker, companyNames)
+      const now = new Date().toISOString()
 
       const { data: existing, error: selectError } = await supabase
         .from('securities')
-        .select('id, company_name, sector, is_active')
+        .select('id, company_name, sector, exchange, is_active')
         .eq('ticker', ticker)
         .maybeSingle()
 
       if (selectError) {
-        skipped++
+        recordSkip(`select_error:${selectError.message}`)
         continue
       }
 
-      if (!existing) {
-        const { error: insertError } = await supabase.from('securities').insert({
-          ticker,
-          company_name: companyName,
-          exchange: 'DSE',
-          is_active: true,
-        })
-        if (insertError) skipped++
-        else inserted++
-        continue
+      const payload = {
+        ticker,
+        company_name: companyName,
+        sector: existing?.sector ?? null,
+        exchange: 'DSE',
+        is_active: true,
+        updated_at: now,
       }
 
-      const needsUpdate =
-        existing.company_name !== companyName ||
-        existing.is_active !== true ||
-        existing.sector === null
-
-      if (!needsUpdate) {
-        skipped++
-        continue
-      }
-
-      const { error: updateError } = await supabase
+      const { error: upsertError } = await supabase
         .from('securities')
-        .update({
-          company_name: companyName,
-          is_active: true,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existing.id)
+        .upsert(payload, { onConflict: 'ticker' })
 
-      if (updateError) skipped++
-      else updated++
+      if (upsertError) {
+        recordSkip(`upsert_error:${ticker}:${upsertError.message}`)
+        continue
+      }
+
+      if (existing) {
+        const unchanged =
+          existing.company_name === companyName &&
+          existing.exchange === 'DSE' &&
+          existing.is_active === true
+
+        if (!unchanged) {
+          updated++
+        }
+      } else {
+        inserted++
+      }
+
+      if (sampleAcceptedRows.length < 5) {
+        sampleAcceptedRows.push({ ticker, company_name: companyName })
+      }
     }
 
     const summary = {
@@ -163,6 +221,8 @@ Deno.serve(async (req) => {
       updated,
       skipped,
       totalProcessed: rows.length,
+      firstFiveSkippedReasons,
+      sampleAcceptedRows,
       syncedAt: new Date().toISOString(),
     }
 
@@ -170,6 +230,18 @@ Deno.serve(async (req) => {
     return jsonResponse(summary)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Sync failed'
-    return jsonResponse({ ok: false, inserted: 0, updated: 0, skipped: 0, error: message }, 500)
+    return jsonResponse(
+      {
+        ok: false,
+        inserted: 0,
+        updated: 0,
+        skipped: 0,
+        totalProcessed: 0,
+        firstFiveSkippedReasons: [message],
+        sampleAcceptedRows: [],
+        error: message,
+      },
+      500,
+    )
   }
 })
