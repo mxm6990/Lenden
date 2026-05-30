@@ -1,13 +1,13 @@
 import { ChevronRight } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { lessons } from '../data/lessons'
+import { CompactAppHeader } from '../components/layout/CompactAppHeader'
 import { Card } from '../components/ui/Card'
-import { ScreenHeader } from '../components/layout/ScreenHeader'
 
 export function LearnScreen() {
   return (
     <>
-      <ScreenHeader title="Learn" subtitle="Invest with confidence" large />
+      <CompactAppHeader title="Learn" subtitle="Invest with confidence" />
       <div className="px-5 pb-4">
         <Card className="mb-5 border-lenden-mint/20 bg-lenden-mint/5 p-4">
           <p className="text-sm font-semibold text-white">New to investing?</p>

@@ -1,9 +1,12 @@
-import { stocks } from '../data/stocks'
-import { buildMockStockHistory } from '../data/mockStockHistory'
+import { normalizeSecurityKey, resolveStockSync } from '../lib/securityListing'
 import {
+  buildPrototypeHistorySummary,
+  buildSessionEstimateSummary,
+} from '../lib/stockChartFallback'
+import {
+  getCachedMarketQuote,
   getMarketDataMode,
-  getMarketDataSourceLabel,
-  isMarketDataMock,
+  refreshMarketQuotes,
 } from './marketDataProvider'
 import type { StockHistoryRange, StockHistorySummary } from '../types/stockHistory'
 
@@ -16,39 +19,43 @@ function delay<T>(value: T): Promise<T> {
 export async function getStockHistory(
   ticker: string,
   range: StockHistoryRange,
-): Promise<StockHistorySummary | null> {
-  const stock = getStockByTicker(ticker)
-  if (!stock) return delay(null)
+): Promise<StockHistorySummary> {
+  await refreshMarketQuotes()
+
+  const normalized = normalizeSecurityKey(ticker)
+  const quote = getCachedMarketQuote(normalized)
+  const stock = resolveStockSync(normalized)
+  const lastPrice = quote?.lastPrice ?? stock?.price ?? 0
+
+  if (lastPrice <= 0) {
+    return delay(
+      buildPrototypeHistorySummary(normalized, 100, range),
+    )
+  }
 
   const mode = getMarketDataMode()
   const endpoint = import.meta.env.VITE_DSE_MARKET_DATA_ENDPOINT?.trim()
 
-  if (mode === 'experimental_dse' && endpoint) {
+  if (mode === 'licensed' && endpoint) {
     // Future: fetch(`${endpoint}/history?ticker=...&range=...`)
-    // Fall back to mock when vendor API is not wired yet.
   }
 
-  const source = getMarketDataSourceLabel()
-  const points = buildMockStockHistory(stock.ticker, stock.price, range, source)
-  const prices = points.map((p) => p.price)
+  if (quote && !quote.isMock && mode === 'experimental_dse') {
+    if (range === '1D') {
+      return delay(buildSessionEstimateSummary(normalized, quote, range))
+    }
 
-  return delay({
-    ticker: stock.ticker,
-    range,
-    points,
-    startPrice: prices[0] ?? stock.price,
-    endPrice: prices[prices.length - 1] ?? stock.price,
-    high: Math.max(...prices),
-    low: Math.min(...prices),
-    lastUpdated: points[points.length - 1]?.timestamp ?? new Date().toISOString(),
-    source,
-    isMock: isMarketDataMock(),
-  })
-}
+    const prototype = buildPrototypeHistorySummary(normalized, lastPrice, range)
+    return delay({
+      ...prototype,
+      sourceLabel: 'Session estimate',
+      sourceDescription:
+        'Longer ranges use a prototype curve seeded from the latest DSE quote until licensed history is available.',
+      isMock: true,
+    })
+  }
 
-function getStockByTicker(ticker: string) {
-  const normalized = ticker.trim().toLowerCase()
-  return stocks.find((s) => s.ticker.toLowerCase() === normalized || s.id === normalized) ?? null
+  return delay(buildPrototypeHistorySummary(normalized, lastPrice, range))
 }
 
 export type { StockHistoryRange, StockHistorySummary }

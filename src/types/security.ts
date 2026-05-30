@@ -59,6 +59,7 @@ export interface SecurityListing extends Security {
   change: number
   changePct: number
   sourceLabel: string
+  volume: number
 }
 
 export interface SecuritiesCatalogSnapshot {

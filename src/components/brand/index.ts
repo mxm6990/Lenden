@@ -1,11 +1,1 @@
-export { BrandMark, LendenLogo } from './LendenLogo'
-export {
-  colors,
-  fonts,
-  typeScale,
-  brandMarkPaths,
-  brandMarkViewBox,
-  logoLockups,
-  taglines,
-  lendenTailwindPreset,
-} from '@lenden/branding'
+export { BrandMark, LendenLogo, type LendenLogoVariant } from './LendenLogo'

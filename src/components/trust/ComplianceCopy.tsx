@@ -4,13 +4,14 @@
  */
 
 import { getMarketDataStatus, isExperimentalMarketDataMode } from '../../services/marketDataProvider'
-import { getSecurityCatalogSource, getSecurityCount } from '../../services/securityCatalogApi'
+import { getSecurityCount } from '../../services/securityCatalogApi'
 import { MARKET_DATA_DISCLAIMER, type MarketDataBadgeLabel } from '../../types/marketData'
 
 export const COMPLIANCE_COPY = {
   prototypeBanner:
     'Closed beta prototype · Mock trading only · Market data shown for demonstration only',
   closedBetaLabel: 'Closed Beta Prototype',
+  paperTradingBeta: 'Paper Trading Beta',
   notFinancialAdvice: 'Not financial advice.',
   brokerageRequired:
     'Securities services require licensed brokerage partnerships and regulatory approval.',
@@ -38,6 +39,36 @@ export function ClosedBetaBadge({ className = '' }: { className?: string }) {
     >
       {COMPLIANCE_COPY.closedBetaLabel}
     </span>
+  )
+}
+
+export function PaperTradingBetaPill({ className = '' }: { className?: string }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border border-amber-400/35 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-amber-200 uppercase ${className}`}
+    >
+      {COMPLIANCE_COPY.paperTradingBeta}
+    </span>
+  )
+}
+
+export function MarketFeedBanner({ className = '' }: { className?: string }) {
+  const status = getMarketDataStatus()
+  const feedLabel =
+    status.badge === 'Experimental DSE Feed'
+      ? 'Experimental DSE Feed'
+      : status.sourceLabel || 'Prototype Data'
+
+  return (
+    <div
+      className={`mx-5 mb-3 rounded-xl border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-[11px] leading-snug text-amber-100/90 ${className}`}
+    >
+      <span className="font-semibold text-amber-100">{feedLabel}</span>
+      <span className="text-amber-200/80"> · Paper Trading</span>
+      <span className="mt-1 block text-[10px] text-amber-200/70">
+        {getSecurityCount().toLocaleString()} DSE securities · {COMPLIANCE_COPY.mockTrading}
+      </span>
+    </div>
   )
 }
 
@@ -111,9 +142,7 @@ export function MarketStatisticsBanner({
   count?: number
   className?: string
 }) {
-  const status = getMarketDataStatus()
   const securitiesCount = count ?? getSecurityCount()
-  const catalogSource = getSecurityCatalogSource()
 
   return (
     <div
@@ -121,17 +150,6 @@ export function MarketStatisticsBanner({
     >
       <p className="text-xs font-semibold text-white">
         DSE Securities Available: {securitiesCount.toLocaleString()}
-      </p>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <MarketDataBadge label={status.badge} />
-        {catalogSource === 'supabase' && (
-          <span className="inline-flex items-center rounded-full border border-sky-400/30 bg-sky-500/10 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-sky-200 uppercase">
-            Securities Master
-          </span>
-        )}
-      </div>
-      <p className="mt-2 text-[10px] leading-relaxed text-lenden-muted">
-        Market data source: {status.sourceLabel}. {COMPLIANCE_COPY.mockTrading}
       </p>
     </div>
   )

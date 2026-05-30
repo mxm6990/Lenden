@@ -11,6 +11,7 @@ import {
   type OrderFailureReason,
 } from '../services/tradingApi'
 import { getStockById } from '../services/marketApi'
+import { getTradeQuoteDisplay, type TradeQuoteDisplay } from '../lib/tradeQuote'
 import type { MockOrderReceipt } from '../types/trading'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
@@ -79,6 +80,7 @@ export function SellFlowScreen() {
   } = useApp()
 
   const [stock, setStock] = useState<Awaited<ReturnType<typeof getStockById>>>(null)
+  const [tradeQuote, setTradeQuote] = useState<TradeQuoteDisplay | null>(null)
   const [sharesOwned, setSharesOwned] = useState(0)
   const [avgCost, setAvgCost] = useState(0)
   const [sharesInput, setSharesInput] = useState('')
@@ -90,7 +92,12 @@ export function SellFlowScreen() {
 
   useEffect(() => {
     if (!selectedStockId) return
-    getStockById(selectedStockId).then(setStock)
+    Promise.all([getStockById(selectedStockId), getTradeQuoteDisplay(selectedStockId)]).then(
+      ([stockData, quoteData]) => {
+        setStock(stockData)
+        setTradeQuote(quoteData)
+      },
+    )
   }, [selectedStockId])
 
   useEffect(() => {
@@ -229,13 +236,27 @@ export function SellFlowScreen() {
         )}
 
         <Card className="mb-4 p-5">
+          <p className="text-sm font-medium text-lenden-muted">Current price</p>
+          <p className="mt-1 text-2xl font-bold tabular-nums text-white">
+            {formatBDT(tradeQuote?.lastPrice ?? stock.price)}
+          </p>
+          <p className="mt-1 text-xs text-lenden-muted">
+            Source: {tradeQuote?.sourceLabel ?? 'Prototype Data'}
+            {tradeQuote?.asOf
+              ? ` · Updated ${new Date(tradeQuote.asOf).toLocaleString('en-GB', {
+                  dateStyle: 'medium',
+                  timeStyle: 'short',
+                })}`
+              : ''}
+          </p>
+        </Card>
+
+        <Card className="mb-4 p-5">
           <p className="text-sm font-medium text-lenden-muted">Your position</p>
           <p className="mt-1 text-3xl font-bold tabular-nums text-white">
             {sharesOwned.toLocaleString('en-BD')} shares
           </p>
-          <p className="mt-1 text-xs text-lenden-muted">
-            Avg cost {formatBDT(avgCost)} · {formatBDT(stock.price)} mock price
-          </p>
+          <p className="mt-1 text-xs text-lenden-muted">Avg cost {formatBDT(avgCost)}</p>
         </Card>
 
         {sellStep === 'amount' && (
@@ -294,6 +315,16 @@ export function SellFlowScreen() {
               <p className="text-sm font-semibold text-white">Sell preview</p>
               <ReceiptRow label="Shares to sell" value={`${preview.preview.sharesToSell}`} />
               <ReceiptRow label="Estimated price" value={formatBDT(preview.preview.pricePerShare)} />
+              <ReceiptRow label="Price source" value={tradeQuote?.sourceLabel ?? 'Prototype Data'} />
+              {tradeQuote?.asOf && (
+                <ReceiptRow
+                  label="Quote updated"
+                  value={new Date(tradeQuote.asOf).toLocaleString('en-GB', {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  })}
+                />
+              )}
               <ReceiptRow label="Gross proceeds" value={formatBDT(preview.preview.grossProceeds)} />
               <ReceiptRow label="Estimated fees" value={formatBDT(preview.preview.feeBdt)} />
               <ReceiptRow label="Net proceeds" value={formatBDT(preview.preview.netProceeds)} />

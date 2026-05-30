@@ -9,16 +9,16 @@ import type { PortfolioHistoryPoint } from '../data/portfolio'
 import { DSE_STATUS_STYLES, getDseSummary, getMarketStatus, getStocks } from '../services/marketApi'
 import { Card, ChangeText } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
-import { LendenLogo } from '../components/brand/LendenLogo'
+import { CompactAppHeader } from '../components/layout/CompactAppHeader'
 import { PortfolioChart } from '../components/charts/PortfolioChart'
 import { BuyingPowerCard } from '../components/portfolio/BuyingPowerCard'
 import { HoldingRow } from '../components/portfolio/HoldingRow'
 import { PastTransactionsSection } from '../components/portfolio/PastTransactionsSection'
-import { BetaScreenLabels, MarketDataNotice, PrototypeBanner } from '../components/trust/ComplianceCopy'
+import { MarketDataNotice, PrototypeBanner } from '../components/trust/ComplianceCopy'
 import { LoadingSkeleton, TrustState } from '../components/trust/TrustState'
 
 export function HomeScreen() {
-  const { watchlist, openStock, startBuy, setTab, user, isDemo, portfolioVersion, dataRefreshing } =
+  const { watchlist, openStock, startBuy, setTab, user, portfolioVersion, dataRefreshing } =
     useApp()
   const [scrubbedPoint, setScrubbedPoint] = useState<PortfolioHistoryPoint | null>(null)
   const [initialLoad, setInitialLoad] = useState(true)
@@ -75,18 +75,16 @@ export function HomeScreen() {
   }, [watchlist, portfolioVersion])
 
   return (
-    <div className="px-5 pt-14 pb-4">
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-        <PrototypeBanner className="mb-4" />
-        <BetaScreenLabels isDemo={isDemo} className="mb-3" />
-        <MarketDataNotice className="mb-4" />
-        <div className="mb-1 flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-lg font-medium text-lenden-muted">{greeting}</p>
-            <h1 className="text-3xl font-bold tracking-tight text-white">Your portfolio</h1>
+    <>
+      <CompactAppHeader />
+      <div className="px-5 pb-4">
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+          <PrototypeBanner className="mb-3" />
+          <MarketDataNotice className="mb-4" />
+          <div className="mb-1">
+            <p className="text-base font-medium text-lenden-muted">{greeting}</p>
+            <h1 className="text-2xl font-bold tracking-tight text-white">Your portfolio</h1>
           </div>
-          <LendenLogo lockup="englishDark" className="shrink-0" />
-        </div>
 
         {showInitialSkeleton ? (
           <LoadingSkeleton rows={4} className="mt-5" />
@@ -263,6 +261,7 @@ export function HomeScreen() {
           </>
         )}
       </motion.div>
-    </div>
+      </div>
+    </>
   )
 }

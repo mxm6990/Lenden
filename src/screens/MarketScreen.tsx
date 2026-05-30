@@ -1,31 +1,27 @@
 import { Search } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { getDseSummary, getMarketStatus } from '../services/marketApi'
-import { getSecurityCount, getSecurityListings } from '../services/securityCatalogApi'
+import { getSecurityListings } from '../services/securityCatalogApi'
 import { Card, ChangeText } from '../components/ui/Card'
 import { VirtualSecurityList } from '../components/market/VirtualSecurityList'
-import { ScreenHeader } from '../components/layout/ScreenHeader'
-import {
-  BetaScreenLabels,
-  MarketDataNotice,
-  MarketStatisticsBanner,
-  PrototypeBanner,
-} from '../components/trust/ComplianceCopy'
+import { CompactAppHeader } from '../components/layout/CompactAppHeader'
+import { MarketFeedBanner } from '../components/trust/ComplianceCopy'
 import { LoadingSkeleton, TrustState } from '../components/trust/TrustState'
 import type { SecurityListing } from '../types/security'
 
 export function MarketScreen() {
-  const { openStock, isDemo } = useApp()
+  const { openStock } = useApp()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SecurityListing[]>([])
-  const [securityCount, setSecurityCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [searching, setSearching] = useState(false)
   const [dseValue, setDseValue] = useState(0)
   const [dseChange, setDseChange] = useState({ value: 0, pct: 0 })
   const [marketStatus, setMarketStatus] = useState<Awaited<ReturnType<typeof getMarketStatus>> | null>(null)
   const [unavailable, setUnavailable] = useState(false)
+  const searchAnchorRef = useRef<HTMLDivElement>(null)
+  const listTopRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     Promise.all([getDseSummary(), getMarketStatus(), getSecurityListings('')])
@@ -37,7 +33,6 @@ export function MarketScreen() {
           setDseChange({ value: dse.change, pct: dse.changePct })
         }
         setResults(listings)
-        setSecurityCount(getSecurityCount())
       })
       .finally(() => setLoading(false))
   }, [])
@@ -46,70 +41,73 @@ export function MarketScreen() {
     setSearching(true)
     const timer = setTimeout(() => {
       getSecurityListings(query)
-        .then((listings) => {
-          setResults(listings)
-          if (!query.trim()) setSecurityCount(getSecurityCount())
-        })
+        .then(setResults)
         .finally(() => setSearching(false))
-    }, 200)
+    }, 150)
+
     return () => clearTimeout(timer)
   }, [query])
 
-  return (
-    <>
-      <ScreenHeader title="Market" subtitle="Dhaka Stock Exchange" large />
-      <div className="px-5 pb-4">
-        <PrototypeBanner className="mb-4" />
-        <BetaScreenLabels isDemo={isDemo} className="mb-3" />
-        <MarketStatisticsBanner count={securityCount} className="mb-3" />
-        <MarketDataNotice className="mb-4" />
+  useEffect(() => {
+    if (!query.trim()) return
+    listTopRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }, [query])
 
-        {loading ? (
+  return (
+    <div className="pb-28">
+      <CompactAppHeader title="Market" subtitle="Dhaka Stock Exchange" />
+      <MarketFeedBanner />
+
+      {loading ? (
+        <div className="px-5 pt-2">
           <LoadingSkeleton rows={4} />
-        ) : unavailable ? (
+        </div>
+      ) : unavailable ? (
+        <div className="px-5 pt-2">
           <TrustState
             variant="error"
             title="Market data unavailable"
             message="We could not load DSE market data. Please try again shortly."
           />
-        ) : (
-          <>
-            <Card className="mb-4 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium text-lenden-muted">DSEX Index</p>
-                  <p className="text-2xl font-bold text-white">{dseValue.toLocaleString()}</p>
-                </div>
-                <div className="text-right">
-                  <ChangeText value={dseChange.value} pct={dseChange.pct} />
-                  <p className="mt-1 text-[10px] text-lenden-muted">Dhaka Stock Exchange</p>
-                </div>
+        </div>
+      ) : (
+        <>
+          <Card className="mx-5 mb-3 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-medium text-lenden-muted">DSEX Index</p>
+                <p className="text-xl font-bold text-white">{dseValue.toLocaleString()}</p>
               </div>
-              {marketStatus?.status === 'Closed' && (
-                <TrustState
-                  variant="info"
-                  title="DSE market closed"
-                  message={`Trading hours: ${marketStatus.hoursLabel}. Quotes shown are for demonstration only.`}
-                  className="mt-3"
-                />
-              )}
-              {marketStatus?.isDelayed && marketStatus.status !== 'Closed' && (
-                <p className="mt-3 text-[10px] text-lenden-muted">
-                  Delayed data notice · Market data shown for demonstration only
-                </p>
-              )}
-            </Card>
+              <div className="text-right">
+                <ChangeText value={dseChange.value} pct={dseChange.pct} />
+              </div>
+            </div>
+            {marketStatus?.status === 'Closed' && (
+              <p className="mt-2 text-[10px] text-lenden-muted">
+                Market closed · {marketStatus.hoursLabel}
+              </p>
+            )}
+          </Card>
 
-            <div className="relative mb-4">
+          <div
+            ref={searchAnchorRef}
+            className="sticky top-[5.5rem] z-20 border-b border-white/5 bg-lenden-black/95 px-5 py-2.5 backdrop-blur-xl"
+          >
+            <div className="relative">
               <Search className="absolute top-1/2 left-4 h-4 w-4 -translate-y-1/2 text-lenden-muted" />
               <input
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search ticker or company name..."
-                className="w-full rounded-2xl border border-white/10 bg-lenden-surface py-3 pr-4 pl-11 text-sm text-white placeholder:text-lenden-muted outline-none focus:border-lenden-mint/40"
+                enterKeyHint="search"
+                autoCorrect="off"
+                autoCapitalize="characters"
+                className="w-full rounded-2xl border border-white/10 bg-lenden-surface py-3.5 pr-4 pl-11 text-base text-white placeholder:text-lenden-muted outline-none focus:border-lenden-mint/40"
               />
             </div>
+          </div>
 
+          <div ref={listTopRef} className="px-5 pt-3">
             <p className="mb-3 text-xs font-semibold tracking-wide text-lenden-muted uppercase">
               DSE Securities · {results.length} results
             </p>
@@ -127,9 +125,9 @@ export function MarketScreen() {
             {!searching && results.length > 0 && (
               <VirtualSecurityList items={results} onSelect={openStock} />
             )}
-          </>
-        )}
-      </div>
-    </>
+          </div>
+        </>
+      )}
+    </div>
   )
 }

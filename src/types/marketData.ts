@@ -17,6 +17,9 @@ export interface MarketQuote {
   changePercent: number
   volume: number
   tradeTime: string
+  previousClose?: number
+  dayHigh?: number
+  dayLow?: number
   source: string
   sourceLabel: string
   isLive: boolean

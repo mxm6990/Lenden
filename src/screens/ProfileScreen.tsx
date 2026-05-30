@@ -6,7 +6,7 @@ import {
   ProfileIdentityHeader,
   ProfileSection,
 } from '../components/profile/ProfileSection'
-import { ScreenHeader } from '../components/layout/ScreenHeader'
+import { CompactAppHeader } from '../components/layout/CompactAppHeader'
 import {
   getComplianceStatus,
   getSecuritySettings,
@@ -14,7 +14,7 @@ import {
 } from '../services/profileApi'
 import { appendAuditLog } from '../services/auditApi'
 import { getAuthenticatedUserId } from '../lib/supabaseAuth'
-import { BetaScreenLabels, PrototypeBanner } from '../components/trust/ComplianceCopy'
+import { PrototypeBanner } from '../components/trust/ComplianceCopy'
 import { LoadingSkeleton, TrustState } from '../components/trust/TrustState'
 import { Button } from '../components/ui/Button'
 import type { ProfileRoute, SecuritySettings, UserProfile, VerificationStatus } from '../types/profile'
@@ -137,7 +137,7 @@ export function ProfileScreen() {
   if (loadState === 'loading') {
     return (
       <>
-        <ScreenHeader title="Profile" subtitle="Account & compliance" large />
+        <CompactAppHeader title="Profile" subtitle="Account & compliance" />
         <div className="px-5 pb-4">
           <LoadingSkeleton rows={4} />
         </div>
@@ -148,7 +148,7 @@ export function ProfileScreen() {
   if (loadState === 'error' || !profile) {
     return (
       <>
-        <ScreenHeader title="Profile" subtitle="Account & compliance" large />
+        <CompactAppHeader title="Profile" subtitle="Account & compliance" />
         <div className="px-5 pb-4">
           <PrototypeBanner className="mb-4" />
           <TrustState
@@ -182,10 +182,9 @@ export function ProfileScreen() {
 
   return (
     <>
-      <ScreenHeader title="Profile" subtitle="Account & compliance" large />
+      <CompactAppHeader title="Profile" subtitle="Account & compliance" />
       <div className="px-5 pb-4">
-        <PrototypeBanner className="mb-4" />
-        <BetaScreenLabels isDemo={isDemo} className="mb-3" />
+        <PrototypeBanner className="mb-3" />
         {kycPending && (
           <TrustState
             variant="warning"

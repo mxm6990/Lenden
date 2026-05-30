@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { fonts, taglines } from '@lenden/branding'
-import { LendenLogo } from '../components/brand/LendenLogo'
+import { LendenLogo } from './branding/LendenLogo'
 
 type Locale = 'en' | 'bn'
 
@@ -49,7 +49,7 @@ export function SplashHero() {
             transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] as const }}
           >
             <LendenLogo
-              lockup="englishDarkLg"
+              variant="hero"
               wordmarkText={copy.wordmark}
               wordmarkFontFamily={copy.wordmarkFont}
             />

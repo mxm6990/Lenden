@@ -12,7 +12,7 @@ interface StockHistoryChartProps {
 }
 
 export function StockHistoryChart({ ticker, className = '' }: StockHistoryChartProps) {
-  const [range, setRange] = useState<StockHistoryRange>('1M')
+  const [range, setRange] = useState<StockHistoryRange>('1D')
   const [summary, setSummary] = useState<StockHistorySummary | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -33,7 +33,7 @@ export function StockHistoryChart({ ticker, className = '' }: StockHistoryChartP
 
   const coords = useMemo(() => {
     if (!summary || summary.points.length === 0) return ''
-    const prices = summary.points.map((p) => p.price)
+    const prices = summary.points.map((point) => point.price)
     const min = Math.min(...prices)
     const max = Math.max(...prices)
     const spread = max - min || 1
@@ -51,10 +51,10 @@ export function StockHistoryChart({ ticker, className = '' }: StockHistoryChartP
     return <LoadingSkeleton rows={3} className={className} />
   }
 
-  if (!summary) {
+  if (!summary || summary.points.length === 0) {
     return (
       <div className={`rounded-xl border border-white/5 p-4 text-center text-xs text-lenden-muted ${className}`}>
-        Historical price data unavailable.
+        Chart unavailable for this security.
       </div>
     )
   }
@@ -80,12 +80,12 @@ export function StockHistoryChart({ ticker, className = '' }: StockHistoryChartP
 
       <svg viewBox="0 0 100 36" className="h-32 w-full" preserveAspectRatio="none">
         <defs>
-          <linearGradient id="stockHistoryFill" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id={`stockHistoryFill-${ticker}`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#4ade80" stopOpacity="0.2" />
             <stop offset="100%" stopColor="#4ade80" stopOpacity="0" />
           </linearGradient>
         </defs>
-        <polygon points={`${coords} 100,36 0,36`} fill="url(#stockHistoryFill)" />
+        <polygon points={`${coords} 100,36 0,36`} fill={`url(#stockHistoryFill-${ticker})`} />
         <polyline points={coords} fill="none" stroke="#4ade80" strokeWidth="1.5" />
       </svg>
 
@@ -110,16 +110,18 @@ export function StockHistoryChart({ ticker, className = '' }: StockHistoryChartP
 
       <div className="mt-3 flex items-center justify-between gap-2 text-[10px] text-lenden-muted">
         <span>
-          Last updated {new Date(summary.lastUpdated).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
+          Last updated{' '}
+          {new Date(summary.lastUpdated).toLocaleString('en-GB', {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          })}
         </span>
         <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200">
-          {summary.source}
+          {summary.sourceLabel}
         </span>
       </div>
 
-      <p className="mt-2 text-[10px] leading-relaxed text-lenden-muted">
-        Historical prices shown are prototype data unless connected to a licensed market data provider.
-      </p>
+      <p className="mt-2 text-[10px] leading-relaxed text-lenden-muted">{summary.sourceDescription}</p>
     </div>
   )
 }

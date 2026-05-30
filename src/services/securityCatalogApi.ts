@@ -201,14 +201,36 @@ export function securityToListing(security: Security): SecurityListing {
     change: quote?.change ?? fallback?.change ?? 0,
     changePct: quote?.changePercent ?? fallback?.changePct ?? 0,
     sourceLabel: quote?.sourceLabel ?? 'Prototype Data',
+    volume: quote?.volume ?? 0,
   }
+}
+
+function rankSearchResult(security: Security, query: string): number {
+  const q = query.trim().toLowerCase()
+  if (!q) return 0
+
+  const ticker = security.ticker.toLowerCase()
+  const name = security.companyName.toLowerCase()
+
+  if (ticker === q) return 0
+  if (ticker.startsWith(q)) return 1
+  if (name.startsWith(q)) return 2
+  if (ticker.includes(q)) return 3
+  if (name.includes(q)) return 4
+  return 5
 }
 
 export async function getSecurityListings(query = ''): Promise<SecurityListing[]> {
   await refreshSecurityCatalog()
   await refreshMarketQuotes()
-  const securities = query ? await searchSecurities(query) : await getAllSecurities()
-  return securities.map(securityToListing)
+  const trimmedQuery = query.trim()
+  const securities = trimmedQuery ? await searchSecurities(trimmedQuery) : await getAllSecurities()
+  const sorted = trimmedQuery
+    ? [...securities].sort(
+        (left, right) => rankSearchResult(left, trimmedQuery) - rankSearchResult(right, trimmedQuery),
+      )
+    : securities
+  return sorted.map(securityToListing)
 }
 
 export function securityToStock(security: Security, listing?: Partial<SecurityListing>): Stock {

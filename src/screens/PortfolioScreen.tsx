@@ -7,14 +7,14 @@ import type { PortfolioHistoryPoint } from '../data/portfolio'
 import type { AllocationSegment } from '../data/allocation'
 import { Card, ChangeText } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
-import { ScreenHeader } from '../components/layout/ScreenHeader'
+import { CompactAppHeader } from '../components/layout/CompactAppHeader'
 import { PortfolioChart } from '../components/charts/PortfolioChart'
-import { BetaScreenLabels, PrototypeBanner } from '../components/trust/ComplianceCopy'
+import { PrototypeBanner } from '../components/trust/ComplianceCopy'
 import { LoadingSkeleton, TrustState } from '../components/trust/TrustState'
 import { useApp } from '../context/AppContext'
 
 export function PortfolioScreen() {
-  const { openStock, openAllocation, startBuy, startSell, isDemo, portfolioVersion, dataRefreshing } =
+  const { openStock, openAllocation, startBuy, startSell, portfolioVersion, dataRefreshing } =
     useApp()
   const [scrubbedPoint, setScrubbedPoint] = useState<PortfolioHistoryPoint | null>(null)
   const [initialLoad, setInitialLoad] = useState(true)
@@ -50,10 +50,9 @@ export function PortfolioScreen() {
 
   return (
     <>
-      <ScreenHeader title="Portfolio" subtitle="Your DSE holdings" large />
+      <CompactAppHeader title="Portfolio" subtitle="Your DSE holdings" />
       <div className="px-5 pb-4">
-        <PrototypeBanner className="mb-4" />
-        <BetaScreenLabels isDemo={isDemo} className="mb-3" />
+        <PrototypeBanner className="mb-3" />
         {portfolioError && (
           <TrustState
             variant="error"
