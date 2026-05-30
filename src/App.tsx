@@ -15,6 +15,7 @@ import { AllocationDetailScreen } from './screens/AllocationDetailScreen'
 import { ProfileRouteScreen } from './screens/profile/ProfileRouteScreen'
 import { BuyFlowScreen } from './screens/BuyFlowScreen'
 import { SellFlowScreen } from './screens/SellFlowScreen'
+import { WatchlistScreen } from './screens/WatchlistScreen'
 
 // import { AdminDashboardConcept } from './admin/AdminDashboardConcept' // dev-only ops concept
 
@@ -33,6 +34,14 @@ function MainApp() {
     return (
       <AppShell showNav={false}>
         <BuyFlowScreen />
+      </AppShell>
+    )
+  }
+
+  if (overlay === 'watchlist') {
+    return (
+      <AppShell showNav={false}>
+        <WatchlistScreen />
       </AppShell>
     )
   }

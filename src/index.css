@@ -20,9 +20,10 @@
 
 :root {
   --app-header-height: 4.25rem;
-  --bottom-nav-height: 3.375rem;
+  --bottom-nav-bar-height: 3.375rem;
+  --bottom-nav-height: calc(var(--bottom-nav-bar-height) + env(safe-area-inset-bottom, 0px));
   --overlay-action-height: 5.75rem;
-  --bottom-nav-safe: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 1.5rem);
+  --bottom-nav-safe: calc(var(--bottom-nav-height) + 1.5rem);
 }
 
 @layer base {

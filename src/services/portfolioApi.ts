@@ -22,7 +22,12 @@ import {
 } from '../data/transactions'
 import type { AllocationSegment } from '../data/allocation'
 import { isDemoModeActive } from '../lib/demoMode'
-import { canonicalWatchlistTicker } from '../lib/watchlistState'
+import {
+  canonicalWatchlistTicker,
+  getWatchlistDeleteIds,
+  getWatchlistLegacyAliases,
+  normalizeWatchlistIds,
+} from '../lib/watchlistState'
 import { getStockPrice } from '../services/marketDataProvider'
 import { getAuthenticatedContext } from '../lib/supabaseAuth'
 import {
@@ -394,7 +399,9 @@ export async function getWatchlistStockIds(): Promise<string[]> {
           .eq('user_id', ctx.userId)
           .order('created_at', { ascending: true })
 
-        if (!error && data) return data.map((row) => row.stock_id as string)
+        if (!error && data) {
+          return normalizeWatchlistIds(data.map((row) => row.stock_id as string))
+        }
       }
     }
   }
@@ -409,6 +416,15 @@ export async function addWatchlistStock(stockId: string): Promise<string[]> {
   if (!supabase) return []
 
   const canonical = canonicalWatchlistTicker(stockId)
+  const legacyAliases = getWatchlistLegacyAliases(canonical)
+
+  if (legacyAliases.length > 0) {
+    await supabase
+      .from('watchlists')
+      .delete()
+      .eq('user_id', ctx.userId)
+      .in('stock_id', legacyAliases)
+  }
 
   await supabase.from('watchlists').upsert(
     { user_id: ctx.userId, stock_id: canonical },
@@ -433,8 +449,9 @@ export async function removeWatchlistStock(stockId: string): Promise<string[]> {
   if (!supabase) return []
 
   const canonical = canonicalWatchlistTicker(stockId)
+  const deleteIds = getWatchlistDeleteIds(stockId)
 
-  await supabase.from('watchlists').delete().eq('user_id', ctx.userId).eq('stock_id', canonical)
+  await supabase.from('watchlists').delete().eq('user_id', ctx.userId).in('stock_id', deleteIds)
 
   await appendAuditLog({
     action: 'WATCHLIST_UPDATED',

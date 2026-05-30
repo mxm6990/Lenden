@@ -33,6 +33,7 @@ import { isSupabaseConfigured } from '../lib/supabase'
 import {
   canonicalWatchlistTicker,
   isWatchlistMember,
+  normalizeWatchlistIds,
   withWatchlistMember,
   withoutWatchlistMember,
 } from '../lib/watchlistState'
@@ -64,6 +65,7 @@ interface AppContextValue extends AppState {
   completeKyc: () => void
   setTab: (tab: MainTab) => void
   openStock: (stockId: string) => void
+  openWatchlist: () => void
   openAllocation: () => void
   openProfileRoute: (route: ProfileRoute) => void
   closeProfileRoute: () => void
@@ -163,7 +165,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             setUser(mapProfileToNavUser(profileResult.data))
           }
 
-          setWatchlist(watchlistIds)
+          setWatchlist(normalizeWatchlistIds(watchlistIds))
         }
 
         setPortfolioVersion((v) => v + 1)
@@ -312,6 +314,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setSelectedStockId(stockId)
           setOverlay('stock-detail')
         },
+        openWatchlist: () => {
+          setOverlay('watchlist')
+        },
         openAllocation: () => {
           setOverlay('allocation-detail')
         },
@@ -343,14 +348,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const canonical = canonicalWatchlistTicker(stockId)
           if (watchlistPersistInFlight.current.has(canonical)) return
 
-          const removing = isWatchlistMember(watchlist, canonical)
-          const previous = [...watchlist]
+          const wasSaved = isWatchlistMember(watchlist, stockId)
+          const nextSaved = !wasSaved
+          const previous = normalizeWatchlistIds(watchlist)
 
           setWatchlist((list) =>
-            removing ? withoutWatchlistMember(list, canonical) : withWatchlistMember(list, canonical),
+            wasSaved
+              ? withoutWatchlistMember(list, canonical)
+              : withWatchlistMember(list, canonical),
           )
 
-          if (isDemo) return
+          const logWatchlistAudit = (persistResult: 'ok' | 'error' | 'demo', finalWatchlist: string[]) => {
+            if (!import.meta.env.DEV) return
+            console.group('Watchlist toggle audit')
+            console.log('stockId input', stockId)
+            console.log('canonicalTicker', canonical)
+            console.log('wasSaved', wasSaved)
+            console.log('nextSaved', nextSaved)
+            console.log('persist result', persistResult)
+            console.log('final watchlist', finalWatchlist)
+            console.groupEnd()
+          }
+
+          if (isDemo) {
+            logWatchlistAudit(
+              'demo',
+              wasSaved
+                ? withoutWatchlistMember(previous, canonical)
+                : withWatchlistMember(previous, canonical),
+            )
+            return
+          }
 
           watchlistPersistInFlight.current.add(canonical)
           setWatchlistPersisting((pending) =>
@@ -359,15 +387,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
           void (async () => {
             try {
-              if (removing) {
+              if (wasSaved) {
                 await removeWatchlistStock(canonical)
               } else {
                 await addWatchlistStock(canonical)
               }
-              const updated = await getWatchlistStockIds()
-              setWatchlist(updated.map((id) => canonicalWatchlistTicker(id)))
+              const updated = normalizeWatchlistIds(await getWatchlistStockIds())
+              setWatchlist(updated)
+              logWatchlistAudit('ok', updated)
             } catch {
               setWatchlist(previous)
+              logWatchlistAudit('error', previous)
             } finally {
               watchlistPersistInFlight.current.delete(canonical)
               setWatchlistPersisting((pending) => pending.filter((id) => id !== canonical))

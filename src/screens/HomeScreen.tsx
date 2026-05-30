@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { formatBDT, stocks, type Stock } from '../data/stocks'
-import { matchesStockId } from '../lib/securityListing'
+import { matchesWatchlistId } from '../lib/watchlistState'
 import { getPortfolioBundle, type PortfolioBundle } from '../services/portfolioApi'
 import type { PortfolioHistoryPoint } from '../data/portfolio'
 import { DSE_STATUS_STYLES, getDseSummary, getMarketStatus, getStocks } from '../services/marketApi'
@@ -18,7 +18,7 @@ import { MarketDataNotice, PrototypeBanner } from '../components/trust/Complianc
 import { LoadingSkeleton, TrustState } from '../components/trust/TrustState'
 
 export function HomeScreen() {
-  const { watchlist, openStock, startBuy, setTab, user, portfolioVersion, dataRefreshing } =
+  const { watchlist, openStock, openWatchlist, startBuy, setTab, user, portfolioVersion, dataRefreshing } =
     useApp()
   const [scrubbedPoint, setScrubbedPoint] = useState<PortfolioHistoryPoint | null>(null)
   const [initialLoad, setInitialLoad] = useState(true)
@@ -63,7 +63,7 @@ export function HomeScreen() {
         }
         setWatchlistStocks(
           watchlist
-            .map((id) => allStocks.find((s) => matchesStockId(s.id, id)))
+            .map((id) => allStocks.find((s) => matchesWatchlistId(s.id, id)))
             .filter((s): s is Stock => Boolean(s)),
         )
       })
@@ -209,7 +209,7 @@ export function HomeScreen() {
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-sm font-semibold text-white">Watchlist</p>
                 <button
-                  onClick={() => setTab('market')}
+                  onClick={openWatchlist}
                   className="text-xs font-medium text-lenden-mint"
                 >
                   See all
