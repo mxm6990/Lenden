@@ -1,5 +1,5 @@
 import { formatVolume } from '../../services/securityApi'
-import { formatBDT } from '../../data/stocks'
+import { formatMarketListingPrice, isNoTradeQuote } from '../../lib/marketListingFormat'
 import type { SecurityListing } from '../../types/security'
 import { ChangeText } from '../ui/Card'
 
@@ -33,10 +33,15 @@ export function VirtualSecurityList({ items, onSelect, className = '' }: Securit
             </div>
             <div className="shrink-0 pl-3 text-right">
               <p className="text-sm font-bold tabular-nums text-white">
-                {formatBDT(listing.lastPrice)}
+                {formatMarketListingPrice(listing)}
               </p>
-              <ChangeText value={listing.change} pct={listing.changePct} />
-              {listing.volume > 0 && (
+              {isNoTradeQuote(listing) && (
+                <p className="text-[10px] text-lenden-muted">No trade</p>
+              )}
+              {listing.hasQuote && listing.change !== null && listing.changePct !== null && (
+                <ChangeText value={listing.change} pct={listing.changePct} />
+              )}
+              {listing.volume !== null && listing.volume > 0 && (
                 <p className="mt-0.5 text-[10px] tabular-nums text-lenden-muted">
                   Vol {formatVolume(listing.volume)}
                 </p>

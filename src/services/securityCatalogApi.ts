@@ -6,6 +6,7 @@ import {
   resolveStockSync,
 } from '../lib/securityListing'
 import { isSupabaseConfigured, getSupabaseClient } from '../lib/supabase'
+import type { MarketQuote } from '../types/marketData'
 import {
   getAllCachedMarketQuotes,
   getCachedMarketQuote,
@@ -191,17 +192,74 @@ export async function getFeaturedSecurities(): Promise<Security[]> {
   return featured.length > 0 ? featured : securities.slice(0, 6)
 }
 
-export function securityToListing(security: Security): SecurityListing {
-  const quote = getCachedMarketQuote(security.ticker)
-  const fallback = stocks.find((stock) => stock.ticker.toUpperCase() === security.ticker)
+export function buildQuotesByTicker(quotes: MarketQuote[] = getAllCachedMarketQuotes()): Map<string, MarketQuote> {
+  const map = new Map<string, MarketQuote>()
+  for (const quote of quotes) {
+    map.set(quote.ticker.toUpperCase(), quote)
+  }
+  return map
+}
+
+function findQuoteForSecurity(
+  security: Security,
+  quotesByTicker: Map<string, MarketQuote>,
+): MarketQuote | undefined {
+  return quotesByTicker.get(security.ticker.toUpperCase()) ?? getCachedMarketQuote(security.ticker) ?? undefined
+}
+
+function logMarketQuoteMergeAudit(
+  securities: Security[],
+  quotesByTicker: Map<string, MarketQuote>,
+): void {
+  if (!import.meta.env.DEV) return
+
+  let matchedCount = 0
+  let zeroPriceQuoteCount = 0
+  const missingQuoteSample: string[] = []
+  const sampleMatches: Record<string, number | null> = {}
+
+  for (const security of securities) {
+    const key = security.ticker.toUpperCase()
+    const quote = quotesByTicker.get(key)
+    if (quote) {
+      matchedCount += 1
+      if (quote.lastPrice === 0) zeroPriceQuoteCount += 1
+    } else if (missingQuoteSample.length < 5) {
+      missingQuoteSample.push(key)
+    }
+  }
+
+  for (const ticker of ['GP', 'BRACBANK', 'SQURPHARMA', 'BATBC']) {
+    const quote = quotesByTicker.get(ticker)
+    sampleMatches[ticker] = quote?.lastPrice ?? null
+  }
+
+  console.group('Market quote merge audit')
+  console.log({
+    securitiesCount: securities.length,
+    quotesCount: quotesByTicker.size,
+    matchedCount,
+    zeroPriceQuoteCount,
+    missingQuoteSample,
+    sampleMatches,
+  })
+  console.groupEnd()
+}
+
+export function securityToListing(
+  security: Security,
+  quotesByTicker: Map<string, MarketQuote> = buildQuotesByTicker(),
+): SecurityListing {
+  const quote = findQuoteForSecurity(security, quotesByTicker)
 
   return {
     ...security,
-    lastPrice: quote?.lastPrice ?? fallback?.price ?? 0,
-    change: quote?.change ?? fallback?.change ?? 0,
-    changePct: quote?.changePercent ?? fallback?.changePct ?? 0,
+    hasQuote: Boolean(quote),
+    lastPrice: quote ? quote.lastPrice : null,
+    change: quote?.change ?? null,
+    changePct: quote?.changePercent ?? null,
     sourceLabel: quote?.sourceLabel ?? 'Prototype Data',
-    volume: quote?.volume ?? 0,
+    volume: quote?.volume ?? null,
   }
 }
 
@@ -221,8 +279,9 @@ function rankSearchResult(security: Security, query: string): number {
 }
 
 export async function getSecurityListings(query = ''): Promise<SecurityListing[]> {
-  await refreshSecurityCatalog()
   await refreshMarketQuotes()
+  await refreshSecurityCatalog()
+  const quotesByTicker = buildQuotesByTicker()
   const trimmedQuery = query.trim()
   const securities = trimmedQuery ? await searchSecurities(trimmedQuery) : await getAllSecurities()
   const sorted = trimmedQuery
@@ -230,7 +289,8 @@ export async function getSecurityListings(query = ''): Promise<SecurityListing[]
         (left, right) => rankSearchResult(left, trimmedQuery) - rankSearchResult(right, trimmedQuery),
       )
     : securities
-  return sorted.map(securityToListing)
+  logMarketQuoteMergeAudit(sorted, quotesByTicker)
+  return sorted.map((security) => securityToListing(security, quotesByTicker))
 }
 
 export function securityToStock(security: Security, listing?: Partial<SecurityListing>): Stock {

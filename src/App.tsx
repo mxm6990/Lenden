@@ -16,6 +16,8 @@ import { ProfileRouteScreen } from './screens/profile/ProfileRouteScreen'
 import { BuyFlowScreen } from './screens/BuyFlowScreen'
 import { SellFlowScreen } from './screens/SellFlowScreen'
 import { WatchlistScreen } from './screens/WatchlistScreen'
+import { AuthCallbackScreen } from './screens/auth/AuthCallbackScreen'
+import { isAuthCallbackPath } from './lib/authRedirect'
 
 // import { AdminDashboardConcept } from './admin/AdminDashboardConcept' // dev-only ops concept
 
@@ -106,6 +108,15 @@ function AuthFlow() {
 
 function AppRouter() {
   const { isAuthenticated } = useApp()
+
+  if (isAuthCallbackPath() && !isAuthenticated) {
+    return <AuthCallbackScreen />
+  }
+
+  if (isAuthCallbackPath() && isAuthenticated) {
+    window.history.replaceState({}, document.title, '/')
+  }
+
   return isAuthenticated ? <MainApp /> : <AuthFlow />
 }
 

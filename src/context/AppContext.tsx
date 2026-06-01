@@ -30,6 +30,7 @@ import {
   subscribeToAuthChanges,
 } from '../services/authApi'
 import { isSupabaseConfigured } from '../lib/supabase'
+import { isAuthCallbackPath } from '../lib/authRedirect'
 import {
   canonicalWatchlistTicker,
   isWatchlistMember,
@@ -225,6 +226,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     async function bootstrap() {
       await Promise.all([refreshMarketQuotes(), refreshSecurityCatalog()])
+
+      if (isAuthCallbackPath()) {
+        setAuthReady(true)
+        return
+      }
+
       const session = await getAuthSession()
       if (cancelled) return
       if (session) {

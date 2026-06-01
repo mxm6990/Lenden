@@ -55,11 +55,14 @@ export type SecurityQuoteField =
   | 'dividendYield'
 
 export interface SecurityListing extends Security {
-  lastPrice: number
-  change: number
-  changePct: number
+  /** True when a live/experimental quote was matched for this ticker */
+  hasQuote: boolean
+  /** null when no quote is available — never use 0 as a missing-quote sentinel */
+  lastPrice: number | null
+  change: number | null
+  changePct: number | null
   sourceLabel: string
-  volume: number
+  volume: number | null
 }
 
 export interface SecuritiesCatalogSnapshot {

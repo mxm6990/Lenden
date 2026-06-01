@@ -1,0 +1,17 @@
+# Copy to .env.local and fill in from Supabase Dashboard → Project Settings → API
+# Never commit .env.local
+
+# Project root URL only — do NOT append /rest/v1
+VITE_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+VITE_SUPABASE_ANON_KEY=your_anon_public_key_here
+
+# Never enable in production builds — local dev/testing only
+VITE_FORCE_DSE_MARKET_OPEN=false
+
+# Market data adapter: mock | experimental_dse | licensed
+VITE_MARKET_DATA_MODE=mock
+# Experimental DSE uses Supabase Edge Function proxy (dse-market-data) — do NOT point this at raw DSE hosts.
+# Licensed-mode optional proxy/vendor URL only:
+VITE_DSE_MARKET_DATA_ENDPOINT=
+# Optional API key for licensed/experimental feeds — never commit; prefer backend proxy in production
+VITE_DSE_MARKET_DATA_API_KEY=

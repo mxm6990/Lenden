@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useApp } from '../../context/AppContext'
 import { isAuthAvailable, signUpWithEmail } from '../../services/authApi'
+import { isEmailConfirmationRequired } from '../../lib/authConfig'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { ScreenHeader } from '../../components/layout/ScreenHeader'
+import { EmailVerificationBetaBanner } from '../../components/trust/ComplianceCopy'
 import { TrustState } from '../../components/trust/TrustState'
 
 export function SignUpScreen() {
@@ -31,6 +33,10 @@ export function SignUpScreen() {
             message="Without Supabase keys, this form uses the prototype flow only. Add .env.local for real accounts."
             className="mb-4"
           />
+        )}
+
+        {!isEmailConfirmationRequired() && (
+          <EmailVerificationBetaBanner className="mb-4" />
         )}
 
         <form

@@ -32,8 +32,8 @@ export interface MarketStatusInfo {
 }
 
 async function loadQuotedStocks(query = ''): Promise<Stock[]> {
-  await refreshSecurityCatalog()
   await refreshMarketQuotes()
+  await refreshSecurityCatalog()
   const listings = await getSecurityListings(query)
   return listings.map((listing) => securityToStock(listing, listing))
 }

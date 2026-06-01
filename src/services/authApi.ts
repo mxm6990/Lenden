@@ -5,6 +5,8 @@
 
 import { appendAuditLog } from './auditApi'
 import { syncSignupProfileToDatabase } from './profileApi'
+import { isEmailConfirmationRequired } from '../lib/authConfig'
+import { getAuthCallbackUrl } from '../lib/authRedirect'
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
@@ -71,6 +73,7 @@ export async function signUpWithEmail(input: SignUpInput): Promise<AuthResult> {
     email: input.email.trim(),
     password: input.password,
     options: {
+      emailRedirectTo: getAuthCallbackUrl(),
       data: {
         full_name: input.fullName.trim(),
         phone: input.phone.trim(),
@@ -88,7 +91,8 @@ export async function signUpWithEmail(input: SignUpInput): Promise<AuthResult> {
     }
   }
 
-  const needsEmailConfirmation = !data.session && Boolean(data.user)
+  const needsEmailConfirmation =
+    isEmailConfirmationRequired() && !data.session && Boolean(data.user)
 
   if (data.user && data.session) {
     await syncSignupProfileToDatabase({
@@ -174,4 +178,117 @@ export function subscribeToAuthChanges(
   })
 
   return () => subscription.unsubscribe()
+}
+
+const AUTH_CALLBACK_ERROR_KEY = 'lenden_auth_error'
+
+export function storeAuthCallbackError(message: string): void {
+  sessionStorage.setItem(AUTH_CALLBACK_ERROR_KEY, message)
+}
+
+export function consumeAuthCallbackError(): string | null {
+  const message = sessionStorage.getItem(AUTH_CALLBACK_ERROR_KEY)
+  if (message) sessionStorage.removeItem(AUTH_CALLBACK_ERROR_KEY)
+  return message
+}
+
+/** Exchange Supabase email-confirmation redirect (PKCE code or hash session) for a session. */
+export async function completeAuthCallbackFromUrl(): Promise<AuthResult> {
+  if (!isSupabaseConfigured()) {
+    return {
+      ok: false,
+      user: null,
+      needsEmailConfirmation: false,
+      errorCode: 'not_configured',
+      message: 'Supabase is not configured.',
+    }
+  }
+
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    return {
+      ok: false,
+      user: null,
+      needsEmailConfirmation: false,
+      errorCode: 'not_configured',
+      message: 'Supabase is not configured.',
+    }
+  }
+
+  const url = new URL(window.location.href)
+  const authError =
+    url.searchParams.get('error_description') ??
+    url.searchParams.get('error') ??
+    url.hash.match(/error_description=([^&]+)/)?.[1]
+
+  if (authError) {
+    return {
+      ok: false,
+      user: null,
+      needsEmailConfirmation: false,
+      errorCode: 'unknown',
+      message: decodeURIComponent(authError.replace(/\+/g, ' ')),
+    }
+  }
+
+  const code = url.searchParams.get('code')
+  if (code) {
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+    if (error) {
+      return {
+        ok: false,
+        user: null,
+        needsEmailConfirmation: false,
+        errorCode: mapAuthError(error.message),
+        message: error.message,
+      }
+    }
+
+    if (data.session?.user) {
+      await syncSignupProfileToDatabase({
+        fullName: String(data.session.user.user_metadata?.full_name ?? ''),
+        phone: String(data.session.user.user_metadata?.phone ?? ''),
+        email: data.session.user.email ?? '',
+      })
+      await appendAuditLog({
+        action: 'LOGIN',
+        actorId: data.session.user.id,
+        metadata: { method: 'email_confirmation' },
+      })
+      return { ok: true, user: data.session.user, needsEmailConfirmation: false }
+    }
+  }
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+  if (sessionError) {
+    return {
+      ok: false,
+      user: null,
+      needsEmailConfirmation: false,
+      errorCode: mapAuthError(sessionError.message),
+      message: sessionError.message,
+    }
+  }
+
+  if (sessionData.session?.user) {
+    await syncSignupProfileToDatabase({
+      fullName: String(sessionData.session.user.user_metadata?.full_name ?? ''),
+      phone: String(sessionData.session.user.user_metadata?.phone ?? ''),
+      email: sessionData.session.user.email ?? '',
+    })
+    await appendAuditLog({
+      action: 'LOGIN',
+      actorId: sessionData.session.user.id,
+      metadata: { method: 'email_confirmation' },
+    })
+    return { ok: true, user: sessionData.session.user, needsEmailConfirmation: false }
+  }
+
+  return {
+    ok: false,
+    user: null,
+    needsEmailConfirmation: false,
+    errorCode: 'unknown',
+    message: 'Email confirmation link is invalid or expired. Request a new link and try again.',
+  }
 }

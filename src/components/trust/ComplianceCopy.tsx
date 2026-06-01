@@ -165,6 +165,19 @@ export function PrototypeBanner({ className = '' }: { className?: string }) {
   )
 }
 
+export function EmailVerificationBetaBanner({ className = '' }: { className?: string }) {
+  return (
+    <div
+      className={`rounded-xl border border-sky-400/25 bg-sky-500/10 px-3 py-2 text-[11px] leading-snug text-sky-100/90 ${className}`}
+    >
+      <span className="font-semibold text-sky-100">Beta auth mode</span>
+      <span className="mt-1 block text-[10px] text-sky-200/80">
+        Email verification is disabled for this build. Accounts can sign in immediately after signup.
+      </span>
+    </div>
+  )
+}
+
 export function PrototypeModeBadge({ className = '' }: { className?: string }) {
   return (
     <span

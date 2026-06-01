@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useApp } from '../../context/AppContext'
-import { signInWithEmail, isAuthAvailable } from '../../services/authApi'
+import { signInWithEmail, isAuthAvailable, consumeAuthCallbackError } from '../../services/authApi'
+import { isEmailConfirmationRequired } from '../../lib/authConfig'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { ScreenHeader } from '../../components/layout/ScreenHeader'
+import { EmailVerificationBetaBanner } from '../../components/trust/ComplianceCopy'
 import { TrustState } from '../../components/trust/TrustState'
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -17,6 +19,11 @@ export function SignInScreen() {
   const [form, setForm] = useState({ email: '', password: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const callbackError = consumeAuthCallbackError()
+    if (callbackError) setError(callbackError)
+  }, [])
 
   const update = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [key]: e.target.value }))
@@ -32,6 +39,10 @@ export function SignInScreen() {
             message="Add Supabase keys to .env.local to enable sign in, or use Explore Demo on the welcome screen."
             className="mb-4"
           />
+        )}
+
+        {!isEmailConfirmationRequired() && (
+          <EmailVerificationBetaBanner className="mb-4" />
         )}
 
         <form

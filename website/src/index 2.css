@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", system-ui, sans-serif;
+  --font-logo: "Outfit", "DM Sans", system-ui, sans-serif;
+  --font-bengali: "Hind Siliguri", "Noto Sans Bengali", sans-serif;
+
+  --color-lenden-black: #080a09;
+  --color-lenden-dark: #0f1412;
+  --color-lenden-green: #1a5c38;
+  --color-lenden-green-dark: #0f3d24;
+  --color-lenden-green-light: #2d7a4a;
+  --color-lenden-mint: #4ade80;
+  --color-lenden-mint-dim: #22c55e;
+  --color-lenden-surface: #141a17;
+  --color-lenden-card: #1a221e;
+  --color-lenden-border: #2a3530;
+  --color-lenden-muted: #8a9a92;
+  --color-lenden-white: #f8faf9;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply m-0 bg-lenden-black text-lenden-white font-sans antialiased;
+  }
+
+  ::selection {
+    @apply bg-lenden-mint/25 text-white;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-white via-lenden-white to-lenden-mint bg-clip-text text-transparent;
+  }
+
+  .glow-green {
+    box-shadow: 0 0 80px rgba(74, 222, 128, 0.12);
+  }
+
+  .site-grid-bg {
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+    background-size: 64px 64px;
+  }
+
+  .mockup-screen {
+    overflow: hidden;
+    overscroll-behavior: none;
+    pointer-events: none;
+    user-select: none;
+  }
+}

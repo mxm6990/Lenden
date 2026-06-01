@@ -2,7 +2,8 @@ import { motion } from 'framer-motion'
 import { useApp } from '../../context/AppContext'
 import { Button } from '../../components/ui/Button'
 import { SplashHero } from '../../components/SplashHero'
-import { ClosedBetaBadge, ComplianceFooter } from '../../components/trust/ComplianceCopy'
+import { ClosedBetaBadge, ComplianceFooter, EmailVerificationBetaBanner } from '../../components/trust/ComplianceCopy'
+import { isEmailConfirmationRequired } from '../../lib/authConfig'
 
 export function SplashScreen() {
   const { goToAuth, enterDemo } = useApp()
@@ -27,6 +28,9 @@ export function SplashScreen() {
       >
         <ComplianceFooter className="mb-3" />
         <ClosedBetaBadge className="mb-4" />
+        {!isEmailConfirmationRequired() && (
+          <EmailVerificationBetaBanner className="mb-4" />
+        )}
         <div className="mx-auto w-full max-w-full space-y-3">
           <Button fullWidth size="lg" onClick={() => goToAuth('signup')}>
             Create Account

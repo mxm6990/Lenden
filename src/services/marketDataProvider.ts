@@ -6,7 +6,7 @@
  */
 
 import { getStock, stocks, type Stock } from '../data/stocks'
-import { buildMockMarketQuote, buildMockMarketQuotes } from '../data/mockMarketQuotes'
+import { buildMockMarketQuotes } from '../data/mockMarketQuotes'
 import { normalizeSecurityKey } from '../lib/securityListing'
 import { isSupabaseConfigured } from '../lib/supabase'
 import type {
@@ -73,8 +73,12 @@ function setCache(quotes: MarketQuote[], status: Partial<MarketDataStatus>) {
   quoteCache = new Map<string, MarketQuote>()
   for (const quote of quotes) {
     const tickerKey = quote.ticker.toUpperCase()
+    const stockIdKey = normalizeSecurityKey(quote.stockId)
     quoteCache.set(tickerKey, quote)
-    quoteCache.set(quote.stockId, quote)
+    quoteCache.set(stockIdKey, quote)
+    if (quote.stockId !== stockIdKey) {
+      quoteCache.set(quote.stockId, quote)
+    }
   }
   lastRefreshAt = Date.now()
   lastStatus = {
@@ -327,7 +331,7 @@ async function fetchExperimentalQuotesViaProxy(stockId?: string): Promise<{
 
   const payload = (await response.json()) as ProxyMarketDataResponse
   const remoteQuotes = Array.isArray(payload.quotes) ? payload.quotes : []
-  const quotes = remoteQuotes.length > 0 ? mergeWithMockFallback(remoteQuotes) : buildMockMarketQuotes()
+  const quotes = remoteQuotes.length > 0 ? remoteQuotes : buildMockMarketQuotes()
 
   return {
     quotes,
@@ -391,14 +395,25 @@ export function getMarketDataStatus(): MarketDataStatus {
   return lastStatus
 }
 
-export function getCachedMarketQuote(stockId: string): MarketQuote | null {
-  const normalized = normalizeSecurityKey(stockId)
-  return (
+function findQuoteInCache(stockIdOrTicker: string): MarketQuote | null {
+  const normalized = normalizeSecurityKey(stockIdOrTicker)
+  const direct =
     quoteCache.get(normalized) ??
-    quoteCache.get(stockId) ??
-    buildMockMarketQuote(normalized) ??
-    buildMockMarketQuote(stockId)
-  )
+    quoteCache.get(stockIdOrTicker.toUpperCase()) ??
+    quoteCache.get(stockIdOrTicker)
+
+  if (direct) return direct
+
+  for (const quote of quoteCache.values()) {
+    if (quote.ticker.toUpperCase() === normalized) return quote
+    if (normalizeSecurityKey(quote.stockId) === normalized) return quote
+  }
+
+  return null
+}
+
+export function getCachedMarketQuote(stockIdOrTicker: string): MarketQuote | null {
+  return findQuoteInCache(stockIdOrTicker)
 }
 
 export function getAllCachedMarketQuotes(): MarketQuote[] {
@@ -433,8 +448,10 @@ export async function refreshMarketQuotes(force = false, stockId?: string): Prom
   if (!force && refreshPromise) return refreshPromise
 
   const stale = Date.now() - lastRefreshAt > REFRESH_TTL_MS
-  if (!force && quoteCache.size > 0 && !stale && !stockId) {
-    return Array.from(quoteCache.values())
+  const mode = readEnvMode()
+  const cacheMatchesMode = lastStatus.mode === mode
+  if (!force && quoteCache.size > 0 && !stale && !stockId && cacheMatchesMode) {
+    return getAllCachedMarketQuotes()
   }
 
   refreshPromise = (async () => {
@@ -617,5 +634,17 @@ export function isExperimentalMarketDataMode(): boolean {
   return readEnvMode() === 'experimental_dse'
 }
 
-// Warm cache synchronously for first paint — replaced on first refresh.
-setCache(buildMockMarketQuotes(), cacheMockStatus('mock'))
+export async function getMarketSnapshot(): Promise<{
+  quotes: MarketQuote[]
+  status: MarketDataStatus
+}> {
+  await refreshMarketQuotes()
+  return {
+    quotes: getAllCachedMarketQuotes(),
+    status: getMarketDataStatus(),
+  }
+}
+
+if (readEnvMode() === 'mock') {
+  setCache(buildMockMarketQuotes(), cacheMockStatus('mock'))
+}

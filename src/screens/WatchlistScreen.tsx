@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { formatBDT } from '../data/stocks'
+import { formatMarketListingPrice } from '../lib/marketListingFormat'
 import { matchesWatchlistId } from '../lib/watchlistState'
 import { getSecurityListings } from '../services/securityCatalogApi'
 import { WatchlistToggleButton } from '../components/market/WatchlistToggleButton'
@@ -74,9 +74,11 @@ export function WatchlistScreen() {
                   </div>
                   <div className="shrink-0 pl-3 text-right">
                     <p className="text-sm font-bold tabular-nums text-white">
-                      {formatBDT(listing.lastPrice)}
+                      {formatMarketListingPrice(listing)}
                     </p>
-                    <ChangeText value={listing.change} pct={listing.changePct} />
+                    {listing.hasQuote && listing.change !== null && listing.changePct !== null && (
+                      <ChangeText value={listing.change} pct={listing.changePct} />
+                    )}
                   </div>
                 </button>
                 <WatchlistToggleButton ticker={listing.ticker} className="mr-1" />

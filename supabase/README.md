@@ -27,14 +27,30 @@ supabase db push
 npm run supabase:check
 ```
 
-## 4. Auth settings (prototype)
+## 4. Auth settings
+
+See **`docs/supabase-auth-urls.md`** for full Vercel + Supabase URL configuration (Site URL, redirect URLs, preview deployments, callback route).
 
 Supabase Dashboard → **Authentication → Providers → Email**:
 
 - Enable Email provider
-- For easiest prototype testing, **disable “Confirm email”** (re-enable before production)
+- **Confirm email**: enable for production; disable for closed beta instant signup
 
-Add redirect URL if needed: **Authentication → URL Configuration** → `http://localhost:5173`
+Supabase Dashboard → **Authentication → URL Configuration**:
+
+- **Site URL**: your production Vercel URL (e.g. `https://your-app.vercel.app`)
+- **Redirect URLs** (add all):
+  - `https://YOUR_PRODUCTION_VERCEL_URL/**`
+  - `https://*-mxm6990s-projects.vercel.app/**`
+  - `http://localhost:5173/**`
+  - `http://localhost:3000/**`
+
+App signup uses `emailRedirectTo: ${window.location.origin}/auth/callback` — no localhost hardcoding in code.
+
+Optional env:
+
+- `VITE_REQUIRE_EMAIL_CONFIRMATION=false` — beta mode banner + skip email-confirm UX (pair with Supabase confirm off)
+- `VITE_SITE_URL` — optional production URL for build-time fallbacks only
 
 ## 5. Verify
 
