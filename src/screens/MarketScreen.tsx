@@ -2,7 +2,8 @@ import { Search } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { getDseSummary, getMarketStatus } from '../services/marketApi'
-import { getSecurityListings } from '../services/securityCatalogApi'
+import { loadSecurityListingsWithMeta } from '../services/securityCatalogApi'
+import { getMarketSnapshot } from '../services/marketDataProvider'
 import { Card, ChangeText } from '../components/ui/Card'
 import { VirtualSecurityList } from '../components/market/VirtualSecurityList'
 import { CompactAppHeader } from '../components/layout/CompactAppHeader'
@@ -20,33 +21,48 @@ export function MarketScreen() {
   const [dseChange, setDseChange] = useState({ value: 0, pct: 0 })
   const [marketStatus, setMarketStatus] = useState<Awaited<ReturnType<typeof getMarketStatus>> | null>(null)
   const [unavailable, setUnavailable] = useState(false)
+  const [pricesUnavailable, setPricesUnavailable] = useState(false)
+  const [quoteMeta, setQuoteMeta] = useState({ quotesCount: 0, matchedCount: 0 })
   const searchAnchorRef = useRef<HTMLDivElement>(null)
   const listTopRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    Promise.all([getDseSummary(), getMarketStatus(), getSecurityListings('')])
-      .then(([dse, market, listings]) => {
+    Promise.all([getDseSummary(), getMarketStatus(), getMarketSnapshot(), loadSecurityListingsWithMeta('')])
+      .then(([dse, market, snapshot, listingLoad]) => {
         setUnavailable(market.unavailable)
         setMarketStatus(market)
+        setPricesUnavailable(listingLoad.pricesUnavailable)
+        setQuoteMeta({
+          quotesCount: listingLoad.quotesCount || snapshot.quotes.length,
+          matchedCount: listingLoad.matchedCount,
+        })
         if (dse) {
           setDseValue(dse.value)
           setDseChange({ value: dse.change, pct: dse.changePct })
         }
-        setResults(listings)
+        setResults(listingLoad.listings)
       })
       .finally(() => setLoading(false))
   }, [])
 
   useEffect(() => {
+    if (loading) return
     setSearching(true)
     const timer = setTimeout(() => {
-      getSecurityListings(query)
-        .then(setResults)
+      loadSecurityListingsWithMeta(query)
+        .then((listingLoad) => {
+          setResults(listingLoad.listings)
+          setPricesUnavailable(listingLoad.pricesUnavailable)
+          setQuoteMeta({
+            quotesCount: listingLoad.quotesCount,
+            matchedCount: listingLoad.matchedCount,
+          })
+        })
         .finally(() => setSearching(false))
     }, 150)
 
     return () => clearTimeout(timer)
-  }, [query])
+  }, [query, loading])
 
   useEffect(() => {
     if (!query.trim()) return
@@ -72,6 +88,18 @@ export function MarketScreen() {
         </div>
       ) : (
         <>
+          {pricesUnavailable && (
+            <div className="mx-5 mb-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+              <p className="text-sm font-semibold text-amber-200">Market prices unavailable</p>
+              <p className="mt-1 text-xs text-amber-100/80">
+                Live DSE quotes could not be matched to the securities list
+                {quoteMeta.quotesCount > 0
+                  ? ` (${quoteMeta.matchedCount} of ${results.length} matched from ${quoteMeta.quotesCount} quotes).`
+                  : ' (quote feed returned no usable prices).'}
+              </p>
+            </div>
+          )}
+
           <Card className="mx-5 mb-3 p-3">
             <div className="flex items-center justify-between gap-3">
               <div>

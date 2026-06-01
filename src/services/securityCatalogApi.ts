@@ -6,10 +6,13 @@ import {
   resolveStockSync,
 } from '../lib/securityListing'
 import { isSupabaseConfigured, getSupabaseClient } from '../lib/supabase'
-import type { MarketQuote } from '../types/marketData'
+import type { MarketDataStatus, MarketQuote } from '../types/marketData'
 import {
   getAllCachedMarketQuotes,
   getCachedMarketQuote,
+  getMarketDataMode,
+  getMarketDataStatus,
+  getMarketQuotes,
   refreshMarketQuotes,
 } from './marketDataProvider'
 import type { Security, SecurityListing, SecuritiesCatalogSnapshot } from '../types/security'
@@ -192,19 +195,49 @@ export async function getFeaturedSecurities(): Promise<Security[]> {
   return featured.length > 0 ? featured : securities.slice(0, 6)
 }
 
-export function buildQuotesByTicker(quotes: MarketQuote[] = getAllCachedMarketQuotes()): Map<string, MarketQuote> {
+export function buildQuotesByTicker(quotes: MarketQuote[]): Map<string, MarketQuote> {
   const map = new Map<string, MarketQuote>()
   for (const quote of quotes) {
-    map.set(quote.ticker.toUpperCase(), quote)
+    const tickerKey = quote.ticker?.toUpperCase()
+    const stockIdKey = quote.stockId?.toUpperCase()
+    const normalizedKey = normalizeSecurityKey(quote.ticker || quote.stockId)
+
+    if (tickerKey) map.set(tickerKey, quote)
+    if (stockIdKey) map.set(stockIdKey, quote)
+    if (normalizedKey) map.set(normalizedKey, quote)
   }
   return map
+}
+
+function isDisplayableQuote(quote: MarketQuote | undefined, mode: ReturnType<typeof getMarketDataMode>): boolean {
+  if (!quote) return false
+  if (typeof quote.lastPrice !== 'number' || !Number.isFinite(quote.lastPrice)) return false
+  if (mode === 'experimental_dse' && quote.isMock) return false
+  return true
+}
+
+async function resolveQuotesForListings(): Promise<MarketQuote[]> {
+  let quotes = await refreshMarketQuotes()
+  if (quotes.length === 0) {
+    quotes = await getMarketQuotes()
+  }
+  if (quotes.length === 0) {
+    quotes = getAllCachedMarketQuotes()
+  }
+  return quotes
 }
 
 function findQuoteForSecurity(
   security: Security,
   quotesByTicker: Map<string, MarketQuote>,
 ): MarketQuote | undefined {
-  return quotesByTicker.get(security.ticker.toUpperCase()) ?? getCachedMarketQuote(security.ticker) ?? undefined
+  const tickerKey = security.ticker.toUpperCase()
+  return (
+    quotesByTicker.get(tickerKey) ??
+    quotesByTicker.get(normalizeSecurityKey(security.ticker)) ??
+    getCachedMarketQuote(security.ticker) ??
+    undefined
+  )
 }
 
 function logMarketQuoteMergeAudit(
@@ -248,18 +281,63 @@ function logMarketQuoteMergeAudit(
 
 export function securityToListing(
   security: Security,
-  quotesByTicker: Map<string, MarketQuote> = buildQuotesByTicker(),
+  quotesByTicker: Map<string, MarketQuote>,
+  mode: ReturnType<typeof getMarketDataMode> = getMarketDataMode(),
 ): SecurityListing {
   const quote = findQuoteForSecurity(security, quotesByTicker)
+  const displayQuote = isDisplayableQuote(quote, mode) ? quote : undefined
 
   return {
     ...security,
-    hasQuote: Boolean(quote),
-    lastPrice: quote ? quote.lastPrice : null,
-    change: quote?.change ?? null,
-    changePct: quote?.changePercent ?? null,
-    sourceLabel: quote?.sourceLabel ?? 'Prototype Data',
-    volume: quote?.volume ?? null,
+    hasQuote: Boolean(displayQuote),
+    lastPrice: displayQuote ? displayQuote.lastPrice : null,
+    change: displayQuote?.change ?? null,
+    changePct: displayQuote?.changePercent ?? null,
+    sourceLabel: displayQuote?.sourceLabel ?? quote?.sourceLabel ?? 'Prototype Data',
+    volume: displayQuote?.volume ?? null,
+  }
+}
+
+export interface SecurityListingsLoadResult {
+  listings: SecurityListing[]
+  quotesCount: number
+  matchedCount: number
+  pricesUnavailable: boolean
+  status: MarketDataStatus
+}
+
+export async function loadSecurityListingsWithMeta(query = ''): Promise<SecurityListingsLoadResult> {
+  const quotes = await resolveQuotesForListings()
+  await refreshSecurityCatalog()
+  const quotesByTicker = buildQuotesByTicker(quotes)
+  const mode = getMarketDataMode()
+  const status = getMarketDataStatus()
+  const trimmedQuery = query.trim()
+  const securities = trimmedQuery ? await searchSecurities(trimmedQuery) : await getAllSecurities()
+  const sorted = trimmedQuery
+    ? [...securities].sort(
+        (left, right) => rankSearchResult(left, trimmedQuery) - rankSearchResult(right, trimmedQuery),
+      )
+    : securities
+
+  logMarketQuoteMergeAudit(sorted, quotesByTicker)
+
+  const listings = sorted.map((security) => securityToListing(security, quotesByTicker, mode))
+  const matchedCount = listings.filter((listing) => listing.hasQuote).length
+  const pricesUnavailable =
+    mode === 'experimental_dse' &&
+    (quotes.length === 0 ||
+      matchedCount === 0 ||
+      status.fellBackToMock ||
+      status.sourceUnavailable ||
+      status.configurationError != null)
+
+  return {
+    listings,
+    quotesCount: quotes.length,
+    matchedCount,
+    pricesUnavailable,
+    status,
   }
 }
 
@@ -279,18 +357,8 @@ function rankSearchResult(security: Security, query: string): number {
 }
 
 export async function getSecurityListings(query = ''): Promise<SecurityListing[]> {
-  await refreshMarketQuotes()
-  await refreshSecurityCatalog()
-  const quotesByTicker = buildQuotesByTicker()
-  const trimmedQuery = query.trim()
-  const securities = trimmedQuery ? await searchSecurities(trimmedQuery) : await getAllSecurities()
-  const sorted = trimmedQuery
-    ? [...securities].sort(
-        (left, right) => rankSearchResult(left, trimmedQuery) - rankSearchResult(right, trimmedQuery),
-      )
-    : securities
-  logMarketQuoteMergeAudit(sorted, quotesByTicker)
-  return sorted.map((security) => securityToListing(security, quotesByTicker))
+  const result = await loadSecurityListingsWithMeta(query)
+  return result.listings
 }
 
 export function securityToStock(security: Security, listing?: Partial<SecurityListing>): Stock {

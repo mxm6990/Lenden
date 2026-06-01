@@ -90,6 +90,27 @@ function setCache(quotes: MarketQuote[], status: Partial<MarketDataStatus>) {
   logExperimentalDseQuoteAudit(quotes, lastStatus)
 }
 
+function logDseQuoteProviderAudit(
+  mode: MarketDataMode,
+  endpoint: string | null,
+  fetchedQuotes: MarketQuote[],
+  status: MarketDataStatus,
+) {
+  if (!import.meta.env.DEV) return
+
+  const cached = getAllCachedMarketQuotes()
+  console.group('DSE quote provider audit')
+  console.log({
+    mode,
+    endpoint,
+    fetchedQuotesCount: fetchedQuotes.length,
+    cachedQuotesCount: cached.length,
+    firstFiveTickers: cached.slice(0, 5).map((quote) => quote.ticker),
+    status,
+  })
+  console.groupEnd()
+}
+
 function logExperimentalDseQuoteAudit(quotes: MarketQuote[], status: MarketDataStatus) {
   if (!import.meta.env.DEV) return
   if (status.mode !== 'experimental_dse') return
@@ -132,6 +153,86 @@ function asNumber(value: unknown): number | null {
 
 function asString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function normalizeProxyQuote(raw: unknown): MarketQuote | null {
+  if (!raw || typeof raw !== 'object') return null
+
+  const row = raw as Record<string, unknown>
+  const tickerRaw =
+    asString(row.ticker) ??
+    asString(row.symbol) ??
+    asString(row.TRADING_CODE) ??
+    asString(row.trading_code)
+  const stockIdRaw = asString(row.stockId) ?? tickerRaw
+  if (!tickerRaw && !stockIdRaw) return null
+
+  const ticker = normalizeSecurityKey(tickerRaw ?? stockIdRaw!)
+  const stockId = normalizeSecurityKey(stockIdRaw ?? tickerRaw!)
+  const catalogStock = stocks.find((stock) => stock.ticker.toUpperCase() === ticker)
+
+  const lastPrice =
+    asNumber(row.lastPrice) ??
+    asNumber(row.price) ??
+    asNumber(row.LTP) ??
+    asNumber(row.ltp)
+
+  if (lastPrice === null) return null
+
+  const change = asNumber(row.change) ?? asNumber(row.CHANGE) ?? 0
+  const changePercent =
+    asNumber(row.changePercent) ??
+    asNumber(row.changePct) ??
+    asNumber(row.change_percent) ??
+    (lastPrice !== 0 ? (change / lastPrice) * 100 : 0)
+
+  const volume = asNumber(row.volume) ?? asNumber(row.VOLUME) ?? 0
+  const tradeTime =
+    asString(row.tradeTime) ??
+    asString(row.asOf) ??
+    asString(row.timestamp) ??
+    new Date().toISOString()
+
+  return {
+    stockId,
+    ticker,
+    name: asString(row.name) ?? catalogStock?.name ?? ticker,
+    lastPrice,
+    change,
+    changePercent,
+    volume,
+    tradeTime,
+    source: asString(row.source) ?? 'experimental_dse',
+    sourceLabel: asString(row.sourceLabel) ?? 'Experimental DSE Feed',
+    isLive: row.isLive === true,
+    isDelayed: row.isDelayed !== false,
+    isMock: row.isMock === true,
+    disclaimer: asString(row.disclaimer) ?? EXPERIMENTAL_DSE_DISCLAIMER,
+  }
+}
+
+function normalizeProxyQuotes(rawQuotes: unknown[]): MarketQuote[] {
+  const results: MarketQuote[] = []
+  for (const raw of rawQuotes) {
+    const normalized = normalizeProxyQuote(raw)
+    if (normalized) results.push(normalized)
+  }
+  return results
+}
+
+function extractProxyQuotes(payload: unknown): MarketQuote[] {
+  if (Array.isArray(payload)) {
+    return normalizeProxyQuotes(payload)
+  }
+
+  if (payload && typeof payload === 'object') {
+    const record = payload as Record<string, unknown>
+    if (Array.isArray(record.quotes)) {
+      return normalizeProxyQuotes(record.quotes)
+    }
+  }
+
+  return []
 }
 
 function normalizeRemoteRow(raw: Record<string, unknown>, defaults: Partial<MarketQuote>): MarketQuote | null {
@@ -316,11 +417,7 @@ async function fetchExperimentalQuotesViaProxy(stockId?: string): Promise<{
   const headers: Record<string, string> = {
     Accept: 'application/json',
     apikey: anonKey,
-  }
-
-  // Legacy anon JWT keys require Authorization; publishable keys may not be JWT-shaped.
-  if (anonKey.startsWith('eyJ')) {
-    headers.Authorization = `Bearer ${anonKey}`
+    Authorization: `Bearer ${anonKey}`,
   }
 
   const response = await fetch(url.toString(), { headers })
@@ -329,13 +426,17 @@ async function fetchExperimentalQuotesViaProxy(stockId?: string): Promise<{
     throw new Error(`Experimental DSE proxy failed (${response.status}).`)
   }
 
-  const payload = (await response.json()) as ProxyMarketDataResponse
-  const remoteQuotes = Array.isArray(payload.quotes) ? payload.quotes : []
+  const payload = (await response.json()) as unknown
+  const remoteQuotes = extractProxyQuotes(payload)
   const quotes = remoteQuotes.length > 0 ? remoteQuotes : buildMockMarketQuotes()
+  const proxyStatus =
+    payload && typeof payload === 'object'
+      ? ((payload as ProxyMarketDataResponse).status ?? {})
+      : {}
 
   return {
     quotes,
-    status: mapProxyStatus(payload.status ?? {}, 'experimental_dse', quotes.length),
+    status: mapProxyStatus(proxyStatus, 'experimental_dse', quotes.length),
   }
 }
 
@@ -458,11 +559,14 @@ export async function refreshMarketQuotes(force = false, stockId?: string): Prom
     const mode = readEnvMode()
     const endpoint = readEndpoint()
     const apiKey = readApiKey()
+    const proxyEndpoint = readProxyUrl()
+    let fetchedQuotes: MarketQuote[] = []
 
     if (mode === 'mock') {
-      const quotes = buildMockMarketQuotes()
-      setCache(quotes, cacheMockStatus('mock'))
-      return quotes
+      fetchedQuotes = buildMockMarketQuotes()
+      setCache(fetchedQuotes, cacheMockStatus('mock'))
+      logDseQuoteProviderAudit(mode, null, fetchedQuotes, lastStatus)
+      return fetchedQuotes
     }
 
     if (mode === 'licensed') {
@@ -542,10 +646,13 @@ export async function refreshMarketQuotes(force = false, stockId?: string): Prom
 
     try {
       const { quotes, status } = await fetchExperimentalQuotesViaProxy(stockId)
+      fetchedQuotes = quotes
       setCache(quotes, status)
+      logDseQuoteProviderAudit(mode, proxyEndpoint, fetchedQuotes, lastStatus)
       return quotes
-    } catch {
+    } catch (error) {
       const quotes = buildMockMarketQuotes()
+      fetchedQuotes = quotes
       setCache(quotes, {
         mode: 'experimental_dse',
         badge: 'Prototype Data',
@@ -554,12 +661,16 @@ export async function refreshMarketQuotes(force = false, stockId?: string): Prom
         isMock: true,
         isLive: false,
         isDelayed: true,
-        configurationError: 'Experimental DSE proxy unavailable. Showing prototype mock quotes.',
+        configurationError:
+          error instanceof Error
+            ? `Experimental DSE proxy unavailable: ${error.message}`
+            : 'Experimental DSE proxy unavailable. Showing prototype mock quotes.',
         fellBackToMock: true,
         sourceUnavailable: true,
         quoteCount: quotes.length,
         lastRefreshAt: new Date().toISOString(),
       })
+      logDseQuoteProviderAudit(mode, proxyEndpoint, fetchedQuotes, lastStatus)
       return quotes
     }
   })()
@@ -638,11 +749,11 @@ export async function getMarketSnapshot(): Promise<{
   quotes: MarketQuote[]
   status: MarketDataStatus
 }> {
-  await refreshMarketQuotes()
-  return {
-    quotes: getAllCachedMarketQuotes(),
-    status: getMarketDataStatus(),
-  }
+  const fetchedQuotes = await refreshMarketQuotes()
+  const quotes = fetchedQuotes.length > 0 ? fetchedQuotes : getAllCachedMarketQuotes()
+  const status = getMarketDataStatus()
+  logDseQuoteProviderAudit(readEnvMode(), readProxyUrl(), fetchedQuotes, status)
+  return { quotes, status }
 }
 
 if (readEnvMode() === 'mock') {
