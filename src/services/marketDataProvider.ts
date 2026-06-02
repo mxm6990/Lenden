@@ -362,10 +362,16 @@ interface ProxyMarketDataResponse {
     configurationError?: string | null
     lastRefreshAt?: string
     quoteCount?: number
+    source?: 'live' | 'cache' | 'mock'
+    liveQuotesCount?: number
+    cachedQuotesCount?: number
+    returnedQuotesCount?: number
+    cacheAgeMs?: number | null
   }
 }
 
-function mapProxyBadge(badge: string | undefined): MarketDataBadgeLabel {
+function mapProxyBadge(badge: string | undefined, sourceLabel?: string): MarketDataBadgeLabel {
+  if (sourceLabel === 'Cached Experimental DSE Feed') return 'Cached Experimental DSE Feed'
   if (badge === 'Experimental DSE Feed') return 'Experimental DSE Feed'
   if (badge === 'Experimental Feed') return 'Experimental Feed'
   if (badge === 'Licensed Feed') return 'Licensed Feed'
@@ -379,10 +385,11 @@ function mapProxyStatus(
   mode: MarketDataMode,
   quoteCount: number,
 ): Partial<MarketDataStatus> {
+  const sourceLabel = proxyStatus.sourceLabel ?? 'Prototype Data'
   return {
     mode,
-    badge: mapProxyBadge(proxyStatus.badge),
-    sourceLabel: proxyStatus.sourceLabel ?? 'Prototype Data',
+    badge: mapProxyBadge(proxyStatus.badge, sourceLabel),
+    sourceLabel,
     disclaimer: proxyStatus.disclaimer ?? EXPERIMENTAL_DSE_DISCLAIMER,
     isMock: proxyStatus.isMock ?? true,
     isLive: proxyStatus.isLive ?? false,
@@ -393,6 +400,11 @@ function mapProxyStatus(
     fellBackToCache: proxyStatus.fellBackToCache ?? false,
     sourceUnavailable: proxyStatus.sourceUnavailable ?? false,
     quoteCount,
+    source: proxyStatus.source,
+    liveQuotesCount: proxyStatus.liveQuotesCount,
+    cachedQuotesCount: proxyStatus.cachedQuotesCount,
+    returnedQuotesCount: proxyStatus.returnedQuotesCount ?? quoteCount,
+    cacheAgeMs: proxyStatus.cacheAgeMs ?? null,
   }
 }
 

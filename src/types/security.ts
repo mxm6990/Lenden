@@ -63,6 +63,8 @@ export interface SecurityListing extends Security {
   changePct: number | null
   sourceLabel: string
   volume: number | null
+  /** ISO timestamp of matched quote (for freshness badges) */
+  quoteTradeTime: string | null
 }
 
 export interface SecuritiesCatalogSnapshot {

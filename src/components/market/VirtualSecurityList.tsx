@@ -1,5 +1,6 @@
 import { formatVolume } from '../../services/securityApi'
 import { formatMarketListingPrice, isNoTradeQuote } from '../../lib/marketListingFormat'
+import { getQuoteFreshnessLabel } from '../../lib/marketQuoteFreshness'
 import type { SecurityListing } from '../../types/security'
 import { ChangeText } from '../ui/Card'
 
@@ -40,6 +41,11 @@ export function VirtualSecurityList({ items, onSelect, className = '' }: Securit
               )}
               {listing.hasQuote && listing.change !== null && listing.changePct !== null && (
                 <ChangeText value={listing.change} pct={listing.changePct} />
+              )}
+              {listing.hasQuote && getQuoteFreshnessLabel(listing.quoteTradeTime) && (
+                <p className="mt-0.5 text-[10px] text-amber-200/80">
+                  {getQuoteFreshnessLabel(listing.quoteTradeTime)}
+                </p>
               )}
               {listing.volume !== null && listing.volume > 0 && (
                 <p className="mt-0.5 text-[10px] tabular-nums text-lenden-muted">

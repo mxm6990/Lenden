@@ -21,6 +21,7 @@ const REQUIRED_MIGRATIONS = [
   '006_market_quotes_cache.sql',
   '007_securities_master.sql',
   '008_legacy_stock_id_backfill.sql',
+  '010_market_quotes_cache_hardening.sql',
 ]
 
 const checks = []

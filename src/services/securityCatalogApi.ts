@@ -295,6 +295,7 @@ export function securityToListing(
     changePct: displayQuote?.changePercent ?? null,
     sourceLabel: displayQuote?.sourceLabel ?? quote?.sourceLabel ?? 'Prototype Data',
     volume: displayQuote?.volume ?? null,
+    quoteTradeTime: displayQuote?.tradeTime ?? quote?.tradeTime ?? null,
   }
 }
 
@@ -303,6 +304,8 @@ export interface SecurityListingsLoadResult {
   quotesCount: number
   matchedCount: number
   pricesUnavailable: boolean
+  usingCachedPrices: boolean
+  stalePrices: boolean
   status: MarketDataStatus
 }
 
@@ -324,19 +327,22 @@ export async function loadSecurityListingsWithMeta(query = ''): Promise<Security
 
   const listings = sorted.map((security) => securityToListing(security, quotesByTicker, mode))
   const matchedCount = listings.filter((listing) => listing.hasQuote).length
+  const usingCachedPrices = Boolean(status.fellBackToCache || status.source === 'cache')
   const pricesUnavailable =
     mode === 'experimental_dse' &&
-    (quotes.length === 0 ||
-      matchedCount === 0 ||
-      status.fellBackToMock ||
-      status.sourceUnavailable ||
-      status.configurationError != null)
+    (status.fellBackToMock || status.source === 'mock' || (quotes.length === 0 && matchedCount === 0))
+  const stalePrices =
+    usingCachedPrices &&
+    typeof status.cacheAgeMs === 'number' &&
+    status.cacheAgeMs > 24 * 60 * 60 * 1000
 
   return {
     listings,
     quotesCount: quotes.length,
     matchedCount,
     pricesUnavailable,
+    usingCachedPrices,
+    stalePrices,
     status,
   }
 }

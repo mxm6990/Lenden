@@ -36,6 +36,11 @@ export interface MarketDataStatusPayload {
   configurationError: string | null
   lastRefreshAt: string
   quoteCount: number
+  source?: 'live' | 'cache' | 'mock'
+  liveQuotesCount?: number
+  cachedQuotesCount?: number
+  returnedQuotesCount?: number
+  cacheAgeMs?: number | null
 }
 
 function parseNumber(value: unknown): number | null {
@@ -174,6 +179,11 @@ export function buildStatus(params: {
   sourceUnavailable: boolean
   configurationError: string | null
   quoteCount: number
+  source?: 'live' | 'cache' | 'mock'
+  liveQuotesCount?: number
+  cachedQuotesCount?: number
+  returnedQuotesCount?: number
+  cacheAgeMs?: number | null
 }): MarketDataStatusPayload {
   return {
     mode: params.mode,
@@ -189,6 +199,11 @@ export function buildStatus(params: {
     configurationError: params.configurationError,
     lastRefreshAt: new Date().toISOString(),
     quoteCount: params.quoteCount,
+    source: params.source,
+    liveQuotesCount: params.liveQuotesCount,
+    cachedQuotesCount: params.cachedQuotesCount,
+    returnedQuotesCount: params.returnedQuotesCount ?? params.quoteCount,
+    cacheAgeMs: params.cacheAgeMs ?? null,
   }
 }
 

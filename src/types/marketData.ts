@@ -4,9 +4,12 @@ export type MarketDataBadgeLabel =
   | 'Prototype Data'
   | 'Experimental Feed'
   | 'Experimental DSE Feed'
+  | 'Cached Experimental DSE Feed'
   | 'Licensed Feed'
   | 'Delayed Data'
   | 'Data Unavailable'
+
+export type MarketQuoteSource = 'live' | 'cache' | 'mock'
 
 export interface MarketQuote {
   stockId: string
@@ -54,6 +57,11 @@ export interface MarketDataStatus {
   fellBackToCache?: boolean
   sourceUnavailable?: boolean
   quoteCount: number
+  source?: MarketQuoteSource
+  liveQuotesCount?: number
+  cachedQuotesCount?: number
+  returnedQuotesCount?: number
+  cacheAgeMs?: number | null
 }
 
 export const MARKET_DATA_DISCLAIMER =

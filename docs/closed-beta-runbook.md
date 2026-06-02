@@ -47,7 +47,7 @@ npm run beta:check
 
 ---
 
-## 2. Required Supabase migrations (001–006)
+## 2. Required Supabase migrations (001–010)
 
 Run each file in **Supabase Dashboard → SQL Editor**, in order:
 
@@ -58,7 +58,16 @@ Run each file in **Supabase Dashboard → SQL Editor**, in order:
 | 003 | `supabase/migrations/003_persistent_investing.sql` | Holdings, transactions, buying power, watchlists, audit |
 | 004 | `supabase/migrations/004_schema_integrity_and_atomic_mock_buy.sql` | `submit_mock_buy` RPC |
 | 005 | `supabase/migrations/005_submit_mock_sell.sql` | `submit_mock_sell` RPC + realized P&L |
-| 006 | `supabase/migrations/006_market_quotes_cache.sql` | Server cache for experimental DSE proxy fallback |
+| 006 | `supabase/migrations/006_market_quotes_cache.sql` | Aggregate JSON snapshot cache (edge function) |
+| 007 | `supabase/migrations/007_securities_master.sql` | DSE securities master |
+| 008 | `supabase/migrations/008_legacy_stock_id_backfill.sql` | Legacy stock ID mapping |
+| 010 | `supabase/migrations/010_market_quotes_cache_hardening.sql` | Per-ticker durable quote cache (`market_quotes_by_ticker`) |
+
+Optional (server keep-warm — requires **pg_cron** + **pg_net** extensions):
+
+| # | File | Purpose |
+|---|------|---------|
+| 011 | `supabase/migrations/011_market_quotes_keep_warm_cron.sql` | Scheduled Edge Function pings |
 
 See `supabase/README.md` for verification queries.
 
@@ -135,9 +144,72 @@ Restart `npm run dev`. UI shows **Experimental DSE Feed** badge and disclaimer:
 
 ### Fallback behavior
 
-1. Proxy calls upstream `/api/latest_price`
-2. On failure → reads `market_quotes_cache` if younger than 5 minutes
-3. On cache miss → returns prototype mock quotes with `sourceUnavailable` status
+1. Proxy calls upstream `/api/latest_price` (15s timeout)
+2. On success → upserts all quotes to `market_quotes_by_ticker` + aggregate `market_quotes_cache`
+3. On upstream failure/timeout → returns **last known cached quotes** (any age) with:
+   - `source: "cache"`
+   - `fellBackToCache: true`
+   - `sourceLabel: "Cached Experimental DSE Feed"`
+4. Mock quotes only if **both** upstream and cache are empty
+5. Never returns an empty `quotes` array silently
+
+Verify:
+
+```bash
+npm run market:uptime
+```
+
+Expected after at least one successful live fetch: `returnedQuotesCount > 0` and sample tickers show prices even when Render upstream is cold.
+
+### Server-side keep-warm (pg_cron + pg_net)
+
+Render free-tier APIs can cold-start after inactivity. LenDen keeps quotes fresh **server-side** by pinging the Edge Function on a schedule so cache stays populated even when no users open the app.
+
+**Prerequisites**
+
+1. Supabase Dashboard → **Database → Extensions** → enable **pg_cron** and **pg_net**
+2. Run migration `011_market_quotes_keep_warm_cron.sql` (or schedule manually below)
+3. Set database settings once (SQL Editor — replace placeholders):
+
+```sql
+alter database postgres set app.settings.supabase_url = 'https://YOUR_PROJECT_REF.supabase.co';
+alter database postgres set app.settings.anon_key = 'YOUR_PUBLISHABLE_OR_ANON_KEY';
+```
+
+`dse-market-data` has `verify_jwt = false` — the cron job only needs the `apikey` header (no JWT).
+
+**Schedule (Bangladesh DSE hours = Sun–Thu 10:00–14:30 BDT → UTC 04:00–08:30)**
+
+```sql
+select cron.schedule(
+  'dse-market-data-keep-warm-market',
+  '*/10 4-9 * * 0-4',
+  $$select net.http_get(
+    url := 'https://YOUR_PROJECT_REF.supabase.co/functions/v1/dse-market-data',
+    headers := jsonb_build_object('Accept', 'application/json', 'apikey', 'YOUR_ANON_KEY')
+  );$$
+);
+
+select cron.schedule(
+  'dse-market-data-keep-warm-offhours',
+  '*/30 0-3,10-23 * * 0-4',
+  $$select net.http_get(
+    url := 'https://YOUR_PROJECT_REF.supabase.co/functions/v1/dse-market-data',
+    headers := jsonb_build_object('Accept', 'application/json', 'apikey', 'YOUR_ANON_KEY')
+  );$$
+);
+
+select cron.schedule(
+  'dse-market-data-keep-warm-weekend',
+  '*/30 * * * 5,6',
+  $$select net.http_get(
+    url := 'https://YOUR_PROJECT_REF.supabase.co/functions/v1/dse-market-data',
+    headers := jsonb_build_object('Accept', 'application/json', 'apikey', 'YOUR_ANON_KEY')
+  );$$
+);
+```
+
+**After Render cold start:** first cron or user request may still hit cache (`source=cache`) while upstream wakes up; prices remain visible with **Using cached prices** badge instead of dashes.
 
 ---
 

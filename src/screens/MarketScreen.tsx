@@ -9,6 +9,7 @@ import { VirtualSecurityList } from '../components/market/VirtualSecurityList'
 import { CompactAppHeader } from '../components/layout/CompactAppHeader'
 import { MarketFeedBanner } from '../components/trust/ComplianceCopy'
 import { LoadingSkeleton, TrustState } from '../components/trust/TrustState'
+import type { MarketDataStatus } from '../types/marketData'
 import type { SecurityListing } from '../types/security'
 
 export function MarketScreen() {
@@ -20,27 +21,40 @@ export function MarketScreen() {
   const [dseValue, setDseValue] = useState(0)
   const [dseChange, setDseChange] = useState({ value: 0, pct: 0 })
   const [marketStatus, setMarketStatus] = useState<Awaited<ReturnType<typeof getMarketStatus>> | null>(null)
+  const [quoteStatus, setQuoteStatus] = useState<MarketDataStatus | null>(null)
   const [unavailable, setUnavailable] = useState(false)
   const [pricesUnavailable, setPricesUnavailable] = useState(false)
+  const [usingCachedPrices, setUsingCachedPrices] = useState(false)
+  const [stalePrices, setStalePrices] = useState(false)
   const [quoteMeta, setQuoteMeta] = useState({ quotesCount: 0, matchedCount: 0 })
   const searchAnchorRef = useRef<HTMLDivElement>(null)
   const listTopRef = useRef<HTMLDivElement>(null)
+
+  function applyListingLoad(
+    listingLoad: Awaited<ReturnType<typeof loadSecurityListingsWithMeta>>,
+    snapshotQuotesCount?: number,
+  ) {
+    setQuoteStatus(listingLoad.status)
+    setPricesUnavailable(listingLoad.pricesUnavailable)
+    setUsingCachedPrices(listingLoad.usingCachedPrices)
+    setStalePrices(listingLoad.stalePrices)
+    setQuoteMeta({
+      quotesCount: listingLoad.quotesCount || snapshotQuotesCount || 0,
+      matchedCount: listingLoad.matchedCount,
+    })
+    setResults(listingLoad.listings)
+  }
 
   useEffect(() => {
     Promise.all([getDseSummary(), getMarketStatus(), getMarketSnapshot(), loadSecurityListingsWithMeta('')])
       .then(([dse, market, snapshot, listingLoad]) => {
         setUnavailable(market.unavailable)
         setMarketStatus(market)
-        setPricesUnavailable(listingLoad.pricesUnavailable)
-        setQuoteMeta({
-          quotesCount: listingLoad.quotesCount || snapshot.quotes.length,
-          matchedCount: listingLoad.matchedCount,
-        })
+        applyListingLoad(listingLoad, snapshot.quotes.length)
         if (dse) {
           setDseValue(dse.value)
           setDseChange({ value: dse.change, pct: dse.changePct })
         }
-        setResults(listingLoad.listings)
       })
       .finally(() => setLoading(false))
   }, [])
@@ -50,14 +64,7 @@ export function MarketScreen() {
     setSearching(true)
     const timer = setTimeout(() => {
       loadSecurityListingsWithMeta(query)
-        .then((listingLoad) => {
-          setResults(listingLoad.listings)
-          setPricesUnavailable(listingLoad.pricesUnavailable)
-          setQuoteMeta({
-            quotesCount: listingLoad.quotesCount,
-            matchedCount: listingLoad.matchedCount,
-          })
-        })
+        .then((listingLoad) => applyListingLoad(listingLoad))
         .finally(() => setSearching(false))
     }, 150)
 
@@ -88,14 +95,36 @@ export function MarketScreen() {
         </div>
       ) : (
         <>
+          {usingCachedPrices && !pricesUnavailable && (
+            <div className="mx-5 mb-3 rounded-2xl border border-sky-400/30 bg-sky-500/10 px-4 py-3">
+              <p className="text-sm font-semibold text-sky-100">Using cached prices</p>
+              <p className="mt-1 text-xs text-sky-100/80">
+                Live DSE upstream is temporarily unavailable. Showing the last successful quote snapshot
+                {quoteStatus?.cacheAgeMs
+                  ? ` from ${Math.round(quoteStatus.cacheAgeMs / 60_000)} minutes ago.`
+                  : '.'}
+              </p>
+            </div>
+          )}
+
+          {stalePrices && !pricesUnavailable && (
+            <div className="mx-5 mb-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+              <p className="text-sm font-semibold text-amber-200">Stale cached prices</p>
+              <p className="mt-1 text-xs text-amber-100/80">
+                Cached quotes are older than 24 hours. Prices are shown for continuity but may not reflect
+                today&apos;s market.
+              </p>
+            </div>
+          )}
+
           {pricesUnavailable && (
             <div className="mx-5 mb-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
               <p className="text-sm font-semibold text-amber-200">Market prices unavailable</p>
               <p className="mt-1 text-xs text-amber-100/80">
-                Live DSE quotes could not be matched to the securities list
+                Live DSE quotes and cached prices are unavailable
                 {quoteMeta.quotesCount > 0
                   ? ` (${quoteMeta.matchedCount} of ${results.length} matched from ${quoteMeta.quotesCount} quotes).`
-                  : ' (quote feed returned no usable prices).'}
+                  : '.'}
               </p>
             </div>
           )}

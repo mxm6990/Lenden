@@ -5,6 +5,7 @@
 
 import { getMarketDataStatus, isExperimentalMarketDataMode } from '../../services/marketDataProvider'
 import { getSecurityCount } from '../../services/securityCatalogApi'
+import { getMarketFeedStatusLabel } from '../../lib/marketQuoteFreshness'
 import { MARKET_DATA_DISCLAIMER, type MarketDataBadgeLabel } from '../../types/marketData'
 
 export const COMPLIANCE_COPY = {
@@ -27,6 +28,7 @@ const BADGE_STYLES: Record<MarketDataBadgeLabel, string> = {
   'Prototype Data': 'border-white/15 bg-white/5 text-lenden-muted',
   'Experimental Feed': 'border-amber-400/35 bg-amber-500/10 text-amber-200',
   'Experimental DSE Feed': 'border-amber-400/35 bg-amber-500/10 text-amber-200',
+  'Cached Experimental DSE Feed': 'border-sky-400/30 bg-sky-500/10 text-sky-200',
   'Licensed Feed': 'border-lenden-mint/35 bg-lenden-mint/10 text-lenden-mint',
   'Delayed Data': 'border-sky-400/30 bg-sky-500/10 text-sky-200',
   'Data Unavailable': 'border-red-500/25 bg-red-500/10 text-red-300',
@@ -55,9 +57,12 @@ export function PaperTradingBetaPill({ className = '' }: { className?: string })
 export function MarketFeedBanner({ className = '' }: { className?: string }) {
   const status = getMarketDataStatus()
   const feedLabel =
-    status.badge === 'Experimental DSE Feed'
-      ? 'Experimental DSE Feed'
-      : status.sourceLabel || 'Prototype Data'
+    status.badge === 'Cached Experimental DSE Feed'
+      ? 'Cached Experimental DSE Feed'
+      : status.badge === 'Experimental DSE Feed'
+        ? 'Experimental DSE Feed'
+        : status.sourceLabel || 'Prototype Data'
+  const feedStatus = getMarketFeedStatusLabel(status)
 
   return (
     <div
@@ -65,9 +70,17 @@ export function MarketFeedBanner({ className = '' }: { className?: string }) {
     >
       <span className="font-semibold text-amber-100">{feedLabel}</span>
       <span className="text-amber-200/80"> · Paper Trading</span>
+      {status.fellBackToCache && (
+        <span className="ml-1 rounded-full border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold text-sky-200">
+          Using cached prices
+        </span>
+      )}
       <span className="mt-1 block text-[10px] text-amber-200/70">
         {getSecurityCount().toLocaleString()} DSE securities · {COMPLIANCE_COPY.mockTrading}
       </span>
+      {feedStatus !== 'Live experimental DSE feed' && (
+        <span className="mt-1 block text-[10px] text-amber-200/80">{feedStatus}</span>
+      )}
     </div>
   )
 }

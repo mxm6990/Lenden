@@ -21,6 +21,7 @@
     "icons:generate": "node scripts/generate-lenden-icons.mjs",
     "dse:smoke": "npm run smoke --prefix services/dse-experimental-api --",
     "dse:verify": "node scripts/verify-experimental-dse.mjs",
+    "market:uptime": "node scripts/verify-market-data-uptime.mjs",
     "website:dev": "npm run dev --prefix website",
     "website:build": "npm run build --prefix website",
     "website:preview": "npm run preview --prefix website"
