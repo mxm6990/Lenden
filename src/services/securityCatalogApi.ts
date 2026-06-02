@@ -5,6 +5,12 @@ import {
   normalizeSecurityKey,
   resolveStockSync,
 } from '../lib/securityListing'
+import {
+  buildQuotesByTickerMap,
+  coerceMarketQuote,
+  findQuoteForTicker,
+} from '../lib/marketQuoteMerge'
+import { isDemoMode, shouldUseSupabase } from '../lib/marketSession'
 import { isSupabaseConfigured, getSupabaseClient } from '../lib/supabase'
 import type { MarketDataStatus, MarketQuote } from '../types/marketData'
 import {
@@ -12,7 +18,7 @@ import {
   getCachedMarketQuote,
   getMarketDataMode,
   getMarketDataStatus,
-  getMarketQuotes,
+  getMarketSnapshot,
   refreshMarketQuotes,
 } from './marketDataProvider'
 import type { Security, SecurityListing, SecuritiesCatalogSnapshot } from '../types/security'
@@ -24,6 +30,16 @@ const FEATURED_TICKERS = ['GP', 'BRACBANK', 'SQURPHARMA', 'BATBC', 'RENATA', 'MA
 
 let cache: SecuritiesCatalogSnapshot | null = null
 let loadPromise: Promise<SecuritiesCatalogSnapshot> | null = null
+let cachedCatalogAuthKey: string | null | undefined
+
+async function readCatalogAuthKey(): Promise<string | null> {
+  const supabase = getSupabaseClient()
+  if (!supabase) return null
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  return session?.user?.id ?? null
+}
 
 interface SecurityRow {
   id: string
@@ -37,7 +53,7 @@ interface SecurityRow {
 function mapRow(row: SecurityRow): Security {
   return {
     id: row.id,
-    ticker: row.ticker.toUpperCase(),
+    ticker: row.ticker.trim().toUpperCase(),
     companyName: row.company_name,
     sector: row.sector,
     exchange: row.exchange,
@@ -93,7 +109,11 @@ async function fetchFromQuoteProxy(): Promise<Security[]> {
 }
 
 export async function refreshSecurityCatalog(force = false): Promise<SecuritiesCatalogSnapshot> {
-  if (!force && cache && Date.now() - new Date(cache.loadedAt).getTime() < CACHE_TTL_MS) {
+  const authKey = await readCatalogAuthKey()
+  const authChanged = cachedCatalogAuthKey !== undefined && cachedCatalogAuthKey !== authKey
+  cachedCatalogAuthKey = authKey
+
+  if (!force && !authChanged && cache && Date.now() - new Date(cache.loadedAt).getTime() < CACHE_TTL_MS) {
     return cache
   }
 
@@ -196,48 +216,103 @@ export async function getFeaturedSecurities(): Promise<Security[]> {
 }
 
 export function buildQuotesByTicker(quotes: MarketQuote[]): Map<string, MarketQuote> {
-  const map = new Map<string, MarketQuote>()
-  for (const quote of quotes) {
-    const tickerKey = quote.ticker?.toUpperCase()
-    const stockIdKey = quote.stockId?.toUpperCase()
-    const normalizedKey = normalizeSecurityKey(quote.ticker || quote.stockId)
-
-    if (tickerKey) map.set(tickerKey, quote)
-    if (stockIdKey) map.set(stockIdKey, quote)
-    if (normalizedKey) map.set(normalizedKey, quote)
-  }
-  return map
+  return buildQuotesByTickerMap(quotes)
 }
 
-function isDisplayableQuote(quote: MarketQuote | undefined, mode: ReturnType<typeof getMarketDataMode>): boolean {
-  if (!quote) return false
-  if (typeof quote.lastPrice !== 'number' || !Number.isFinite(quote.lastPrice)) return false
-  if (mode === 'experimental_dse' && quote.isMock) return false
-  return true
+function resolveListingQuote(
+  quote: MarketQuote | undefined,
+  status: MarketDataStatus,
+): MarketQuote | null {
+  if (!quote) return null
+
+  const coerced = coerceMarketQuote(quote)
+  if (!coerced) return null
+
+  if (status.mode === 'experimental_dse' && coerced.isMock && !status.fellBackToMock) {
+    return null
+  }
+
+  return coerced
 }
 
-async function resolveQuotesForListings(): Promise<MarketQuote[]> {
-  let quotes = await refreshMarketQuotes()
-  if (quotes.length === 0) {
-    quotes = await getMarketQuotes()
+async function resolveQuotesForListings(): Promise<{ quotes: MarketQuote[]; status: MarketDataStatus }> {
+  const snapshot = await getMarketSnapshot()
+  if (snapshot.quotes.length > 0) {
+    return snapshot
   }
-  if (quotes.length === 0) {
-    quotes = getAllCachedMarketQuotes()
+
+  await refreshMarketQuotes()
+  return {
+    quotes: getAllCachedMarketQuotes(),
+    status: getMarketDataStatus(),
   }
-  return quotes
 }
 
 function findQuoteForSecurity(
   security: Security,
   quotesByTicker: Map<string, MarketQuote>,
 ): MarketQuote | undefined {
-  const tickerKey = security.ticker.toUpperCase()
   return (
-    quotesByTicker.get(tickerKey) ??
-    quotesByTicker.get(normalizeSecurityKey(security.ticker)) ??
-    getCachedMarketQuote(security.ticker) ??
-    undefined
+    findQuoteForTicker(security.ticker, quotesByTicker) ??
+    (() => {
+      const cached = getCachedMarketQuote(security.ticker)
+      return cached ? coerceMarketQuote(cached) ?? undefined : undefined
+    })()
   )
+}
+
+function logAuthenticatedMarketListingAudit(
+  securities: Security[],
+  listings: SecurityListing[],
+  quotesByTicker: Map<string, MarketQuote>,
+  quotesCount: number,
+): void {
+  if (!import.meta.env.DEV) return
+
+  void shouldUseSupabase().then((useSupabase) => {
+    let zeroPriceListingsCount = 0
+    const missingQuoteSample: string[] = []
+    const sampleListings: Record<string, Pick<SecurityListing, 'hasQuote' | 'lastPrice' | 'sourceLabel'>> =
+      {}
+
+    for (const listing of listings) {
+      if (listing.hasQuote && listing.lastPrice === 0) zeroPriceListingsCount += 1
+      if (!listing.hasQuote && missingQuoteSample.length < 5) {
+        missingQuoteSample.push(listing.ticker)
+      }
+    }
+
+    for (const ticker of ['GP', 'BRACBANK', 'SQURPHARMA', 'BATBC']) {
+      const listing = listings.find((entry) => entry.ticker === ticker)
+      sampleListings[ticker] = listing
+        ? {
+            hasQuote: listing.hasQuote,
+            lastPrice: listing.lastPrice,
+            sourceLabel: listing.sourceLabel,
+          }
+        : { hasQuote: false, lastPrice: null, sourceLabel: 'missing listing' }
+    }
+
+    console.group('Authenticated market listing audit')
+    console.log({
+      isDemo: isDemoMode(),
+      shouldUseSupabase: useSupabase,
+      securitiesCount: securities.length,
+      quotesCount,
+      listingsCount: listings.length,
+      pricedListingsCount: listings.filter((listing) => listing.hasQuote).length,
+      zeroPriceListingsCount,
+      missingQuoteSample,
+      sampleListings,
+      sampleQuoteMap: Object.fromEntries(
+        ['GP', 'BRACBANK', 'SQURPHARMA', 'BATBC'].map((ticker) => [
+          ticker,
+          quotesByTicker.get(ticker)?.lastPrice ?? null,
+        ]),
+      ),
+    })
+    console.groupEnd()
+  })
 }
 
 function logMarketQuoteMergeAudit(
@@ -282,20 +357,20 @@ function logMarketQuoteMergeAudit(
 export function securityToListing(
   security: Security,
   quotesByTicker: Map<string, MarketQuote>,
-  mode: ReturnType<typeof getMarketDataMode> = getMarketDataMode(),
+  status: MarketDataStatus = getMarketDataStatus(),
 ): SecurityListing {
   const quote = findQuoteForSecurity(security, quotesByTicker)
-  const displayQuote = isDisplayableQuote(quote, mode) ? quote : undefined
+  const displayQuote = resolveListingQuote(quote, status)
 
   return {
     ...security,
-    hasQuote: Boolean(displayQuote),
-    lastPrice: displayQuote ? displayQuote.lastPrice : null,
+    hasQuote: displayQuote !== null,
+    lastPrice: displayQuote?.lastPrice ?? null,
     change: displayQuote?.change ?? null,
     changePct: displayQuote?.changePercent ?? null,
-    sourceLabel: displayQuote?.sourceLabel ?? quote?.sourceLabel ?? 'Prototype Data',
+    sourceLabel: displayQuote?.sourceLabel ?? status.sourceLabel ?? 'Prototype Data',
     volume: displayQuote?.volume ?? null,
-    quoteTradeTime: displayQuote?.tradeTime ?? quote?.tradeTime ?? null,
+    quoteTradeTime: displayQuote?.tradeTime ?? null,
   }
 }
 
@@ -310,11 +385,10 @@ export interface SecurityListingsLoadResult {
 }
 
 export async function loadSecurityListingsWithMeta(query = ''): Promise<SecurityListingsLoadResult> {
-  const quotes = await resolveQuotesForListings()
-  await refreshSecurityCatalog()
+  const { quotes, status } = await resolveQuotesForListings()
+  const useSupabase = await shouldUseSupabase()
+  await refreshSecurityCatalog(useSupabase)
   const quotesByTicker = buildQuotesByTicker(quotes)
-  const mode = getMarketDataMode()
-  const status = getMarketDataStatus()
   const trimmedQuery = query.trim()
   const securities = trimmedQuery ? await searchSecurities(trimmedQuery) : await getAllSecurities()
   const sorted = trimmedQuery
@@ -325,11 +399,13 @@ export async function loadSecurityListingsWithMeta(query = ''): Promise<Security
 
   logMarketQuoteMergeAudit(sorted, quotesByTicker)
 
-  const listings = sorted.map((security) => securityToListing(security, quotesByTicker, mode))
+  const listings = sorted.map((security) => securityToListing(security, quotesByTicker, status))
+  logAuthenticatedMarketListingAudit(sorted, listings, quotesByTicker, quotes.length)
+
   const matchedCount = listings.filter((listing) => listing.hasQuote).length
   const usingCachedPrices = Boolean(status.fellBackToCache || status.source === 'cache')
   const pricesUnavailable =
-    mode === 'experimental_dse' &&
+    getMarketDataMode() === 'experimental_dse' &&
     (status.fellBackToMock || status.source === 'mock' || (quotes.length === 0 && matchedCount === 0))
   const stalePrices =
     usingCachedPrices &&
@@ -369,14 +445,18 @@ export async function getSecurityListings(query = ''): Promise<SecurityListing[]
 
 export function securityToStock(security: Security, listing?: Partial<SecurityListing>): Stock {
   const quote = getCachedMarketQuote(security.ticker)
+  const coercedQuote = quote ? coerceMarketQuote(quote) : null
   const fallback = stocks.find((stock) => stock.ticker.toUpperCase() === security.ticker)
-  const stock = buildStockFromSecurity(security, quote, fallback)
+  const stock = buildStockFromSecurity(security, coercedQuote, fallback)
 
   if (!listing) return stock
 
   return {
     ...stock,
-    price: listing.lastPrice ?? stock.price,
+    price:
+      listing.hasQuote === true && typeof listing.lastPrice === 'number'
+        ? listing.lastPrice
+        : stock.price,
     change: listing.change ?? stock.change,
     changePct: listing.changePct ?? stock.changePct,
   }

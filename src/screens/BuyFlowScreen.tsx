@@ -252,7 +252,11 @@ export function BuyFlowScreen() {
         <Card className="mb-4 p-5">
           <p className="text-sm font-medium text-lenden-muted">Current price</p>
           <p className="mt-1 text-2xl font-bold tabular-nums text-white">
-            {formatBDT(tradeQuote?.lastPrice ?? stock.price)}
+            {tradeQuote?.hasQuote && tradeQuote.lastPrice !== null
+              ? formatBDT(tradeQuote.lastPrice)
+              : stock.price > 0
+                ? formatBDT(stock.price)
+                : '—'}
           </p>
           <p className="mt-1 text-xs text-lenden-muted">
             Source: {tradeQuote?.sourceLabel ?? 'Prototype Data'}

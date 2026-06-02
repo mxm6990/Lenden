@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { getDseSummary, getMarketStatus } from '../services/marketApi'
 import { loadSecurityListingsWithMeta } from '../services/securityCatalogApi'
-import { getMarketSnapshot } from '../services/marketDataProvider'
 import { Card, ChangeText } from '../components/ui/Card'
 import { VirtualSecurityList } from '../components/market/VirtualSecurityList'
 import { CompactAppHeader } from '../components/layout/CompactAppHeader'
@@ -13,7 +12,7 @@ import type { MarketDataStatus } from '../types/marketData'
 import type { SecurityListing } from '../types/security'
 
 export function MarketScreen() {
-  const { openStock } = useApp()
+  const { openStock, isDemo, isAuthenticated, dataRefreshing, portfolioVersion } = useApp()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SecurityListing[]>([])
   const [loading, setLoading] = useState(true)
@@ -30,34 +29,41 @@ export function MarketScreen() {
   const searchAnchorRef = useRef<HTMLDivElement>(null)
   const listTopRef = useRef<HTMLDivElement>(null)
 
-  function applyListingLoad(
-    listingLoad: Awaited<ReturnType<typeof loadSecurityListingsWithMeta>>,
-    snapshotQuotesCount?: number,
-  ) {
+  function applyListingLoad(listingLoad: Awaited<ReturnType<typeof loadSecurityListingsWithMeta>>) {
     setQuoteStatus(listingLoad.status)
     setPricesUnavailable(listingLoad.pricesUnavailable)
     setUsingCachedPrices(listingLoad.usingCachedPrices)
     setStalePrices(listingLoad.stalePrices)
     setQuoteMeta({
-      quotesCount: listingLoad.quotesCount || snapshotQuotesCount || 0,
+      quotesCount: listingLoad.quotesCount,
       matchedCount: listingLoad.matchedCount,
     })
     setResults(listingLoad.listings)
   }
 
   useEffect(() => {
-    Promise.all([getDseSummary(), getMarketStatus(), getMarketSnapshot(), loadSecurityListingsWithMeta('')])
-      .then(([dse, market, snapshot, listingLoad]) => {
+    let cancelled = false
+    setLoading(true)
+
+    Promise.all([getDseSummary(), getMarketStatus(), loadSecurityListingsWithMeta('')])
+      .then(([dse, market, listingLoad]) => {
+        if (cancelled) return
         setUnavailable(market.unavailable)
         setMarketStatus(market)
-        applyListingLoad(listingLoad, snapshot.quotes.length)
+        applyListingLoad(listingLoad)
         if (dse) {
           setDseValue(dse.value)
           setDseChange({ value: dse.change, pct: dse.changePct })
         }
       })
-      .finally(() => setLoading(false))
-  }, [])
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isDemo, isAuthenticated, dataRefreshing, portfolioVersion])
 
   useEffect(() => {
     if (loading) return

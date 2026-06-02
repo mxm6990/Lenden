@@ -534,13 +534,28 @@ export function getAllCachedMarketQuotes(): MarketQuote[] {
   const results: MarketQuote[] = []
 
   for (const quote of quoteCache.values()) {
-    const key = quote.ticker.toUpperCase()
+    const coerced = coerceMarketQuoteFromCache(quote)
+    if (!coerced) continue
+    const key = coerced.ticker.toUpperCase()
     if (seen.has(key)) continue
     seen.add(key)
-    results.push(quote)
+    results.push(coerced)
   }
 
   return results.sort((a, b) => a.ticker.localeCompare(b.ticker))
+}
+
+function coerceMarketQuoteFromCache(quote: MarketQuote): MarketQuote | null {
+  if (typeof quote.lastPrice === 'number' && Number.isFinite(quote.lastPrice)) {
+    return quote
+  }
+  if (typeof quote.lastPrice === 'string') {
+    const parsed = Number(String(quote.lastPrice).replace(/,/g, ''))
+    if (Number.isFinite(parsed)) {
+      return { ...quote, lastPrice: parsed }
+    }
+  }
+  return null
 }
 
 export async function getMarketQuote(stockId: string): Promise<MarketQuote | null> {

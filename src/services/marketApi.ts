@@ -6,12 +6,8 @@
 import { DSE_STATUS_STYLES, getDSEMarketInfo } from '../data/dseMarket'
 import { DSE_INDEX, type Stock } from '../data/stocks'
 import type { DseSummaryPayload } from '../api-contracts/market.contract'
-import { getMarketDataStatus, refreshMarketQuotes } from './marketDataProvider'
-import {
-  getSecurityListings,
-  refreshSecurityCatalog,
-  securityToStock,
-} from './securityCatalogApi'
+import { getMarketDataStatus } from './marketDataProvider'
+import { loadSecurityListingsWithMeta, securityToStock } from './securityCatalogApi'
 import { matchesStockId } from '../lib/securityListing'
 
 const MOCK_DELAY_MS = 80
@@ -32,10 +28,8 @@ export interface MarketStatusInfo {
 }
 
 async function loadQuotedStocks(query = ''): Promise<Stock[]> {
-  await refreshMarketQuotes()
-  await refreshSecurityCatalog()
-  const listings = await getSecurityListings(query)
-  return listings.map((listing) => securityToStock(listing, listing))
+  const listingLoad = await loadSecurityListingsWithMeta(query)
+  return listingLoad.listings.map((listing) => securityToStock(listing, listing))
 }
 
 export async function getDseSummary(): Promise<DseSummaryPayload | null> {

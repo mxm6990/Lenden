@@ -4,7 +4,7 @@ import type { SecurityListing } from '../types/security'
 export function formatMarketListingPrice(
   listing: Pick<SecurityListing, 'hasQuote' | 'lastPrice'>,
 ): string {
-  if (!listing.hasQuote || listing.lastPrice === null) return '—'
+  if (!listing.hasQuote || listing.lastPrice === null || listing.lastPrice === undefined) return '—'
   return formatBDT(listing.lastPrice)
 }
 
